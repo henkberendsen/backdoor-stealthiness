@@ -6,3 +6,7 @@ code/.ipynb_checkpoints/
 data
 results
 
+
+
+# anything inside large_files
+large_files/*
