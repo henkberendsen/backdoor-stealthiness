@@ -10,3 +10,10 @@ results
 
 # anything inside large_files
 large_files/*
+
+# anything inside script_logging
+script_logging/*
+
+# anything inside run_files and job_executer_files
+run_files/*
+job_executer_files/*
