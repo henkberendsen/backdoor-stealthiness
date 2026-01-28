@@ -66,11 +66,13 @@ from ot import wasserstein_1d
 
 class Imagenette(torchvision.datasets.VisionDataset):
     """
-    Custom torchvision implementation of the Imagenette dataset.
+    Custom torchvision implementation of the Imagenette dataset with automatic download.
     
-    Unlike the official torchvision implementation, this class provides a 'data'
+    This class wraps torchvision's built-in Imagenette dataset and provides a 'data'
     attribute containing numpy arrays of all images, enabling consistent handling
     with CIFAR-10 and CIFAR-100 datasets.
+    
+    The dataset will be automatically downloaded if not present.
     
     Attributes:
         classes (list): List of class names (10 classes)
@@ -78,22 +80,56 @@ class Imagenette(torchvision.datasets.VisionDataset):
         targets (list): List of integer labels for each image
         
     Args:
-        root (str): Root directory containing 'train' and 'val' subdirectories
+        root (str): Root directory where the dataset will be stored
         train (bool): If True, loads training set; otherwise loads validation set
         transform (callable, optional): Transform to apply to images
         target_transform (callable, optional): Transform to apply to targets
+        download (bool): If True, downloads the dataset if not present. Default: True
+        size (str): Image size variant ('full', '320px', '160px'). Default: '160px'
+        img_size (int): Target size to resize images to (img_size x img_size). Default: 160
         
     Example:
-        >>> dataset = Imagenette(root='./data/imagenette2-160', train=True)
+        >>> dataset = Imagenette(root='./data/imagenette', train=True)
         >>> img, label = dataset[0]
         >>> print(f"Image shape: {img.shape}, Label: {dataset.classes[label]}")
     """
     
-    def __init__(self, root=None, train=True, transform=None, target_transform=None):
+    def __init__(self, root=None, train=True, transform=None, target_transform=None, 
+                 download=True, size="160px", img_size=160):
         super().__init__(root, transform=transform, target_transform=target_transform)
 
         split = "train" if train else "val"
-        img_folder = torchvision.datasets.ImageFolder(os.path.join(self.root, split))
+        self.img_size = img_size
+        
+        # Determine the expected dataset folder name based on size
+        size_to_folder = {"full": "imagenette2", "320px": "imagenette2-320", "160px": "imagenette2-160"}
+        dataset_folder = size_to_folder.get(size, "imagenette2-160")
+        dataset_path = os.path.join(self.root, dataset_folder)
+        
+        # Only download if the dataset folder doesn't exist
+        # This avoids the "directory already exists" error from torchvision
+        should_download = download and not os.path.exists(dataset_path)
+        
+        # Use torchvision's built-in Imagenette with download support
+        base_dataset = torchvision.datasets.Imagenette(
+            root=self.root,
+            split=split,
+            size=size,
+            download=should_download
+        )
+        
+        # Create symlinks for BackdoorBench compatibility
+        # BackdoorBench expects data at imagenette/train and imagenette/val
+        # but torchvision downloads to imagenette/imagenette2-160/train etc.
+        for split_name in ["train", "val"]:
+            symlink_path = os.path.join(self.root, split_name)
+            target_path = os.path.join(dataset_path, split_name)
+            if not os.path.exists(symlink_path) and os.path.exists(target_path):
+                try:
+                    os.symlink(target_path, symlink_path)
+                    print(f"Created symlink: {symlink_path} -> {target_path}")
+                except OSError as e:
+                    print(f"Warning: Could not create symlink {symlink_path}: {e}")
 
         self.classes = [
             'tench', 'English springer', 'cassette player', 'chain saw', 'church',
@@ -102,16 +138,24 @@ class Imagenette(torchvision.datasets.VisionDataset):
         self.data = []
         self.targets = []
 
-        for img_path, label in img_folder.samples:
-            img = np.array(Image.open(img_path).convert("RGB"))
+        # Load all images into numpy arrays for backward compatibility
+        # Imagenette images have varying dimensions, so we resize them to a consistent size
+        print(f"Loading Imagenette {split} set into memory (resizing to {img_size}x{img_size})...")
+        for idx in range(len(base_dataset)):
+            img, label = base_dataset[idx]
+            # Convert to RGB and resize to consistent dimensions
+            img = img.convert("RGB")
+            img = img.resize((img_size, img_size), Image.BILINEAR)
+            img_array = np.array(img)
 
-            if len(img.shape) != 3:
-                print(f"Warning: Invalid image shape at {img_path}")
+            if len(img_array.shape) != 3:
+                print(f"Warning: Invalid image shape at index {idx}")
                 
-            self.data.append(img)
+            self.data.append(img_array)
             self.targets.append(label)
 
         self.data = np.stack(self.data)
+        print(f"Loaded {len(self.data)} images with shape {self.data.shape}.")
 
     def __getitem__(self, index):
         """
@@ -478,13 +522,14 @@ class GrondDataset(BackdoorDataset):
     implementation's POI and POI_TEST classes.
     
     Args:
-        dataset (str): Dataset name ('cifar10', 'cifar100', etc.)
+        dataset (str): Dataset name ('cifar10', 'cifar100', 'imagenette', etc.)
         transform (callable): Transform to apply to images
         target_class (int): Target class for backdoor attack
         record_path (str): Path to Grond attack record directory containing:
             - poison_indices.pth: Indices of poisoned training samples
             - Other Grond-specific files (trigger parameters, etc.)
         train (bool): If True, loads training set; otherwise loads test set
+        data_dir (str): Root directory containing datasets. Default: 'large_files/data'
         
     Note:
         Requires Grond implementation to be available in ./grond/
@@ -504,20 +549,23 @@ class GrondDataset(BackdoorDataset):
         ... )
     """
     
-    def __init__(self, dataset, transform, target_class, record_path, train=True):
+    def __init__(self, dataset, transform, target_class, record_path, train=True, 
+                 data_dir="large_files/data"):
         # Import Grond's poison loader (must be in sys.path)
         grond_dir = os.path.abspath("./grond")
         if grond_dir not in sys.path:
             sys.path.append(grond_dir)
         from grond.poison_loader import POI, POI_TEST
 
+        # Construct path to dataset
+        dataset_path = os.path.join(data_dir, dataset)
+
         # Reconstruct poisoned dataset used in attack
         if train:
             poison_indices = torch.load(os.path.join(record_path, "poison_indices.pth"))
-            data_dir = os.path.join("data", dataset)  # Adjust if needed
             poi_dataset = POI(
                 dataset, 
-                root=data_dir,
+                root=dataset_path,
                 poison_rate=None,  # Unused when poison_indices is provided
                 transform=transform,
                 poison_indices=poison_indices,
@@ -525,10 +573,9 @@ class GrondDataset(BackdoorDataset):
                 upgd_path=record_path
             )
         else:
-            data_dir = os.path.join("data", dataset)
             poi_dataset = POI_TEST(
                 dataset,
-                root=data_dir,
+                root=dataset_path,
                 transform=transform,
                 exclude_target=True,
                 target_cls=target_class,
@@ -1663,8 +1710,54 @@ def TUP(tac_path, model_bd, model_arch="resnet18"):
 # SECTION 6: DATA AND MODEL LOADING FUNCTIONS
 # =============================================================================
 
+# Default image sizes for each dataset (as used in BackdoorBench training)
+IMG_SIZE_DICT = {
+    "cifar10": 32,
+    "cifar100": 32,
+    "imagenette": 80,  # BackdoorBench uses 80x80 for imagenette
+}
 
-def get_dataset(dataset_name, train=True, transforms=None, data_dir="data"):
+
+def detect_image_size_from_attack_path(attack_path):
+    """
+    Detects the image size used in a backdoor attack by examining poisoned images.
+    
+    This function reads a sample image from the attack's bd_test_dataset folder
+    to determine the image dimensions used during training.
+    
+    Args:
+        attack_path (str): Path to the attack directory (e.g., 'record/badnet_resnet18_imagenette_p0-05')
+        
+    Returns:
+        int: Image size (assumes square images, returns width)
+        None: If unable to detect (folder doesn't exist or no images found)
+        
+    Example:
+        >>> size = detect_image_size_from_attack_path('record/badnet_resnet18_imagenette_p0-05')
+        >>> print(f"Detected image size: {size}x{size}")
+    """
+    bd_test_path = os.path.join(attack_path, "bd_test_dataset")
+    
+    if not os.path.exists(bd_test_path):
+        return None
+    
+    # Find first available image
+    for class_folder in os.listdir(bd_test_path):
+        class_path = os.path.join(bd_test_path, class_folder)
+        if os.path.isdir(class_path):
+            for img_file in os.listdir(class_path):
+                if img_file.endswith(('.png', '.jpg', '.jpeg')):
+                    img_path = os.path.join(class_path, img_file)
+                    try:
+                        img = Image.open(img_path)
+                        width, height = img.size
+                        return width  # Assume square images
+                    except Exception:
+                        continue
+    return None
+
+
+def get_dataset(dataset_name, train=True, transforms=None, data_dir="data", img_size=None):
     """
     Loads a dataset by name.
     
@@ -1673,6 +1766,8 @@ def get_dataset(dataset_name, train=True, transforms=None, data_dir="data"):
         train (bool, optional): If True, load training set; else test set. Default: True
         transforms (callable, optional): Transforms to apply to images
         data_dir (str, optional): Root directory for datasets. Default: 'data'
+        img_size (int, optional): Target image size for datasets with variable dimensions
+                                  (e.g., imagenette). If None, uses default from IMG_SIZE_DICT.
         
     Returns:
         Dataset: PyTorch dataset object
@@ -1680,6 +1775,7 @@ def get_dataset(dataset_name, train=True, transforms=None, data_dir="data"):
     Example:
         >>> train_data = get_dataset('cifar10', train=True, transforms=my_transform)
         >>> test_data = get_dataset('cifar100', train=False)
+        >>> imagenette_data = get_dataset('imagenette', train=True, img_size=80)
     """
     data_root = os.path.join(data_dir, dataset_name)
 
@@ -1692,7 +1788,9 @@ def get_dataset(dataset_name, train=True, transforms=None, data_dir="data"):
             root=data_root, train=train, download=True, transform=transforms
         )
     elif dataset_name == "imagenette":
-        return Imagenette(root=data_root, train=train, transform=transforms)
+        # Use provided img_size or fall back to default
+        target_size = img_size if img_size is not None else IMG_SIZE_DICT.get("imagenette", 160)
+        return Imagenette(root=data_root, train=train, transform=transforms, img_size=target_size)
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -1753,7 +1851,7 @@ def load_model_state(arch, dataset, state_dict, device=None):
 
 
 def load_clean_record(dataset, arch, record_dir="record", data_dir="data", 
-                     transform_dict=None, target_class=0):
+                     transform_dict=None, target_class=0, img_size=None):
     """
     Loads clean (benign) dataset and model.
     
@@ -1764,6 +1862,8 @@ def load_clean_record(dataset, arch, record_dir="record", data_dir="data",
         data_dir (str, optional): Directory containing datasets. Default: 'data'
         transform_dict (dict, optional): Dict mapping '{dataset}_{split}' to transforms
         target_class (int, optional): Target class to filter from test sets. Default: 0
+        img_size (int, optional): Target image size for variable-size datasets (e.g., imagenette).
+                                  If None, uses default from IMG_SIZE_DICT.
         
     Returns:
         dict: Dictionary containing:
@@ -1792,7 +1892,7 @@ def load_clean_record(dataset, arch, record_dir="record", data_dir="data",
         transforms = transform_dict.get(transform_key) if transform_dict else None
         
         dataset_obj = get_dataset(dataset, train=is_train, transforms=transforms, 
-                                 data_dir=data_dir)
+                                 data_dir=data_dir, img_size=img_size)
 
         # Filter target class from test sets
         if key in ["test", "test_transformed"]:
