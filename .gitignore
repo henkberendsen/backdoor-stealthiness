@@ -2,9 +2,10 @@
 __pycache__
 code/.ipynb_checkpoints/
 
-# Datasets and results
-data
-results
+# Datasets and results (except defenses/results/)
+data/
+results/
+!defenses/results/
 
 
 
