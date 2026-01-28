@@ -1,0 +1,982 @@
+#!/usr/bin/env python3
+"""
+SPECTRE: Defending Against Backdoor Attacks Using Robust Statistics
+
+Implementation of SPECTRE defense for backdoor detection.
+Uses quantum filtering with robust covariance estimation to identify outliers
+in the feature space that may be poisoned samples.
+
+Reference:
+    Hayase et al. "SPECTRE: Defending Against Backdoor Attacks Using Robust Statistics"
+    International Conference on Machine Learning, 2021
+
+Usage:
+    python defenses/spectre.py --attack badnet --model resnet18 --dataset cifar10 --poison_rate 0.05 --exp_num 1
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+import torch
+import torch.nn as nn
+import numpy as np
+import random
+import csv
+from torch.utils.data import DataLoader
+from sklearn.metrics import confusion_matrix
+from sklearn.decomposition import PCA
+from scipy.linalg import sqrtm, svd
+from tqdm import tqdm
+import torchvision.transforms.v2 as T
+
+# Add project root to path
+REPO_ROOT = Path(__file__).parent.parent.resolve()
+sys.path.insert(0, str(REPO_ROOT))
+
+# Import utilities from eval_utils
+from eval_utils import (
+    BackdoorBenchDataset,
+    load_model_state,
+    get_dataset,
+    load_backdoor_record,
+    load_clean_record,
+    experiment_variable_identifier,
+    detect_image_size_from_attack_path,
+    IMG_SIZE_DICT
+)
+
+# Constants
+RECORD_DIR = REPO_ROOT / "large_files" / "record"
+RESULTS_DIR = REPO_ROOT / "defenses" / "results"
+DATA_DIR = REPO_ROOT / "large_files" / "data"
+TARGET_CLASS = 0
+
+
+def set_random_seed(seed=42):
+    """Set random seed for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+# ============================================================================
+# SPECTRE Utils - Quantum Filter Functions
+# ============================================================================
+
+def k_lowest_ind(A, k):
+    """Return boolean mask for k lowest values in array A."""
+    assert k >= 0
+    result = np.zeros(A.shape, np.bool_)
+    if k > 0:
+        result[np.argpartition(A, k)[:k]] = True
+    return result
+
+
+def cov_Tail(T, d, epsilon, tau):
+    """Calculate tail probability for covariance estimation."""
+    if T <= 10 * np.log(1 / epsilon):
+        return 1
+    return 3 * epsilon / (T * np.log(T)) ** 2
+
+
+def Q(P):
+    """Calculate Q function for quantum filter."""
+    return 2 * np.linalg.norm(P) ** 2
+
+
+def cov_estimation_filter(S_prime, epsilon, tau=0.1, limit=None):
+    """
+    Single iteration of covariance estimation filter.
+    
+    Args:
+        S_prime: Data matrix (n x d)
+        epsilon: Expected fraction of outliers
+        tau: Tail probability threshold
+        limit: Maximum number of samples to remove
+    
+    Returns:
+        tuple: (filter_mask, sigma) where filter_mask indicates samples to keep
+    """
+    n, d = S_prime.shape
+    C, C_prime = 10, 0
+    
+    # Compute sample covariance
+    Sigma_prime = S_prime.T @ S_prime / n
+    
+    try:
+        # Whiten the data
+        sqrt_Sigma = sqrtm(Sigma_prime)
+        if np.iscomplexobj(sqrt_Sigma):
+            sqrt_Sigma = sqrt_Sigma.real
+        Y = np.linalg.solve(sqrt_Sigma, S_prime.T).T
+    except np.linalg.LinAlgError:
+        # If whitening fails, return all samples
+        return None, Sigma_prime
+    
+    # Compute squared Mahalanobis distances
+    x_inv_sqrt_Sigma_prime_x = np.sum(Y * Y, axis=1)
+    
+    def limit_mask(mask, scores):
+        if limit is None:
+            return ~mask
+        else:
+            # Apply additional limit
+            combined = mask | k_lowest_ind(scores, max(0, n - limit))
+            return ~combined
+    
+    # Check for large outliers (early filter)
+    threshold = C * d * np.log(n / tau) if n > 1 else float('inf')
+    mask = x_inv_sqrt_Sigma_prime_x >= threshold
+    if mask.any():
+        return limit_mask(mask, x_inv_sqrt_Sigma_prime_x), None
+    
+    # If no outliers found, return the covariance
+    return None, Sigma_prime
+
+
+def cov_estimation_iterate(S_prime, epsilon, tau=0.1, limit=None, max_iters=10):
+    """
+    Iteratively filter outliers using robust covariance estimation.
+    
+    Args:
+        S_prime: Data matrix (n x d)
+        epsilon: Expected fraction of outliers
+        tau: Tail probability threshold
+        limit: Maximum number of samples to remove
+        max_iters: Maximum iterations
+    
+    Returns:
+        np.array: Boolean mask indicating selected (clean) samples
+    """
+    n = len(S_prime)
+    idxs = np.arange(n)
+    current_data = S_prime.copy()
+    current_limit = limit
+    
+    for i in range(max_iters):
+        filter_mask, sigma = cov_estimation_filter(
+            current_data, epsilon, tau, limit=current_limit
+        )
+        
+        if sigma is not None:
+            # Converged
+            break
+        
+        if filter_mask is not None:
+            if current_limit is not None:
+                current_limit -= len(filter_mask) - np.sum(filter_mask)
+                if current_limit <= 0:
+                    break
+            
+            current_data = current_data[filter_mask]
+            idxs = idxs[filter_mask]
+        else:
+            break
+    
+    # Create final selection mask
+    select = np.zeros(n, np.bool_)
+    select[idxs] = True
+    return select
+
+
+def rcov_quantum_filter(reps, eps, k, alpha=4, tau=0.1, limit1=2, limit2=1.5):
+    """
+    Robust covariance quantum filter.
+    
+    Args:
+        reps: Feature representations (n x d)
+        eps: Expected number of outliers
+        k: Number of PCA dimensions
+        alpha: Exponential scaling parameter
+        tau: Tail probability threshold
+        limit1: Multiplier for covariance estimation limit
+        limit2: Multiplier for final outlier limit
+    
+    Returns:
+        np.array: Boolean mask indicating clean samples
+    """
+    n, d = reps.shape
+    
+    # PCA dimensionality reduction
+    pca = PCA(n_components=min(k, n-1, d))
+    reps_pca = pca.fit_transform(reps)
+    actual_k = reps_pca.shape[1]
+    
+    if actual_k == 1:
+        reps_estimated_white = reps_pca
+        sigma_prime = np.ones((1, 1))
+    else:
+        # Iterative covariance estimation
+        eps_ratio = eps / n if n > 0 else 0.1
+        selected = cov_estimation_iterate(
+            reps_pca, eps_ratio, tau, limit=round(limit1 * eps)
+        )
+        reps_pca_selected = reps_pca[selected, :]
+        
+        if len(reps_pca_selected) < 2:
+            # Not enough samples after filtering
+            return np.ones(n, dtype=bool)
+        
+        # Compute covariance of selected samples
+        sigma = np.cov(reps_pca_selected, rowvar=False, bias=False)
+        if sigma.ndim == 0:
+            sigma = np.array([[sigma]])
+        
+        try:
+            sqrt_sigma = sqrtm(sigma)
+            if np.iscomplexobj(sqrt_sigma):
+                sqrt_sigma = sqrt_sigma.real
+            reps_estimated_white = np.linalg.solve(sqrt_sigma, reps_pca.T).T
+        except np.linalg.LinAlgError:
+            return np.ones(n, dtype=bool)
+        
+        sigma_prime = np.cov(reps_estimated_white, rowvar=False, bias=False)
+        if sigma_prime.ndim == 0:
+            sigma_prime = np.array([[sigma_prime]])
+    
+    # Compute quantum filter matrix
+    I = np.eye(sigma_prime.shape[0])
+    opnorm = np.linalg.norm(sigma_prime, 2)
+    
+    if opnorm > 1 and actual_k > 1:
+        M = np.exp(alpha * (sigma_prime - I) / (opnorm - 1))
+    else:
+        M = np.ones_like(sigma_prime)
+    
+    M /= np.trace(M)
+    
+    # Compute outlier scores
+    scores = np.array([x.T @ M @ x for x in reps_estimated_white])
+    
+    # Find outliers (lowest scores are most suspicious)
+    num_remove = min(round(limit2 * eps), n - 1)
+    estimated_poison_ind = k_lowest_ind(-scores, num_remove)
+    
+    return ~estimated_poison_ind
+
+
+def rcov_auto_quantum_filter(reps, eps, alpha=4, tau=0.1, limit1=2, limit2=1.5):
+    """
+    Automatically select best k for quantum filter.
+    
+    Args:
+        reps: Feature representations (n x d)
+        eps: Expected number of outliers
+        alpha: Exponential scaling parameter
+        tau: Tail probability threshold
+        limit1, limit2: Limit multipliers
+    
+    Returns:
+        tuple: (selected_mask, best_opnorm)
+    """
+    n, d = reps.shape
+    
+    # PCA for analysis
+    max_components = min(64, n - 1, d)
+    if max_components < 1:
+        return np.ones(n, dtype=bool), 0.0
+    
+    pca = PCA(n_components=max_components)
+    reps_pca = pca.fit_transform(reps)
+    
+    # Try different k values (squared to cover range efficiently)
+    max_k = min(64, max_components)
+    squared_values = [int(x) for x in np.linspace(1, np.sqrt(max_k), 8) ** 2]
+    squared_values = sorted(set([max(1, min(v, max_components)) for v in squared_values]))
+    
+    best_opnorm, best_selected, best_k = -float('inf'), None, None
+    
+    for k in squared_values:
+        selected = rcov_quantum_filter(reps, eps, k, alpha, tau, limit1, limit2)
+        
+        if np.sum(selected) < 2:
+            continue
+        
+        selected_matrix = reps_pca[selected, :].T
+        
+        try:
+            cov_matrix = np.cov(selected_matrix)
+            if cov_matrix.ndim == 0:
+                cov_matrix = np.array([[cov_matrix]])
+            
+            sqrt_cov = sqrtm(cov_matrix)
+            if np.iscomplexobj(sqrt_cov):
+                sqrt_cov = sqrt_cov.real
+            
+            transformed = np.linalg.solve(sqrt_cov, reps_pca.T)
+            cov_matrix_prime = np.cov(transformed)
+            if cov_matrix_prime.ndim == 0:
+                cov_matrix_prime = np.array([[cov_matrix_prime]])
+            
+            I = np.eye(cov_matrix_prime.shape[0])
+            _, s, _ = svd(cov_matrix_prime)
+            opnorm = s[0]
+            
+            if opnorm > 1:
+                M = np.exp(alpha * (cov_matrix_prime - I) / (opnorm - 1))
+            else:
+                M = np.ones_like(cov_matrix_prime)
+            M /= np.trace(M)
+            
+            op = np.trace(cov_matrix_prime @ M) / np.trace(M)
+            
+            if op > best_opnorm:
+                best_opnorm, best_selected, best_k = op, selected, k
+        except (np.linalg.LinAlgError, ValueError):
+            continue
+    
+    if best_selected is None:
+        return np.ones(n, dtype=bool), 0.0
+    
+    return best_selected, best_opnorm
+
+
+# ============================================================================
+# Feature Extraction
+# ============================================================================
+
+def get_features(model, model_name, dataloader, device):
+    """
+    Extract features/activations from a specific layer of the model.
+    
+    Args:
+        model: The neural network model
+        model_name: Name of the model architecture
+        dataloader: DataLoader for the dataset
+        device: Device to run on
+    
+    Returns:
+        torch.Tensor: Extracted features for all samples
+    """
+    model.eval()
+    activations_all = []
+    
+    with torch.no_grad():
+        for x_batch, _ in tqdm(dataloader, desc="  Extracting features", leave=False):
+            x_batch = x_batch.to(device)
+            
+            # Register hook based on model architecture
+            outs = []
+            inps = []
+            
+            def layer_hook(module, inp, out):
+                outs.append(out.data)
+            
+            def layer_hook_inp(module, inp, out):
+                inps.append(inp[0].data)
+            
+            # Select appropriate layer based on architecture
+            if model_name == 'resnet18':
+                hook = model.layer4.register_forward_hook(layer_hook)
+            elif model_name in ['vgg16', 'vgg19', 'vgg19_bn']:
+                hook = model.features.register_forward_hook(layer_hook)
+            elif model_name == 'preactresnet18':
+                hook = model.avgpool.register_forward_hook(layer_hook)
+            elif model_name in ['mobilenet_v3_large', 'efficientnet_b3', 'convnext_tiny']:
+                hook = model.avgpool.register_forward_hook(layer_hook)
+            elif model_name == 'densenet161':
+                hook = model.features.register_forward_hook(layer_hook)
+            elif model_name == 'vit_b_16':
+                hook = model[1].heads.register_forward_hook(layer_hook_inp)
+            else:
+                raise ValueError(f"Unsupported model architecture: {model_name}")
+            
+            # Forward pass
+            _ = model(x_batch)
+            
+            # Extract activations
+            if model_name == 'vit_b_16':
+                activations = inps[0].view(inps[0].size(0), -1)
+            elif model_name == 'densenet161':
+                activations = torch.nn.functional.relu(outs[0])
+                activations = activations.view(activations.size(0), -1)
+            else:
+                activations = outs[0].view(outs[0].size(0), -1)
+            
+            activations_all.append(activations.cpu())
+            hook.remove()
+    
+    activations_all = torch.cat(activations_all, axis=0)
+    return activations_all
+
+
+# ============================================================================
+# SPECTRE Detector Class
+# ============================================================================
+
+class SPECTREDetector:
+    """
+    SPECTRE detector for backdoor detection using robust statistics.
+    """
+    
+    def __init__(self, model, model_name, device, num_classes,
+                 percentile=0.05, alpha=4, tau=0.1, random_seed=42):
+        """
+        Initialize the SPECTRE detector.
+        
+        Args:
+            model: The backdoored model
+            model_name: Model architecture name
+            device: Device to run on
+            num_classes: Number of classes in the dataset
+            percentile: Expected fraction of poisoned samples
+            alpha: Exponential scaling for quantum filter
+            tau: Tail probability threshold
+            random_seed: Random seed for reproducibility
+        """
+        self.model = model
+        self.model_name = model_name
+        self.device = device
+        self.num_classes = num_classes
+        self.percentile = percentile
+        self.alpha = alpha
+        self.tau = tau
+        self.random_seed = random_seed
+    
+    def detect(self, train_loader, train_labels):
+        """
+        Detect poisoned samples in the training set using SPECTRE.
+        
+        Args:
+            train_loader: DataLoader for training data
+            train_labels: Labels for training data
+        
+        Returns:
+            list: Indices of suspected poisoned samples
+        """
+        print(f"  Extracting features from model...")
+        
+        # Extract features
+        features = get_features(self.model, self.model_name, train_loader, self.device)
+        features_np = features.numpy()
+        
+        print(f"  Performing per-class SPECTRE analysis...")
+        
+        # Get class indices
+        train_labels_array = np.array(train_labels)
+        n_total = len(train_labels_array)
+        
+        suspicious_indices = []
+        class_scores = []
+        
+        # Perform SPECTRE analysis per class
+        for target_class in range(self.num_classes):
+            print(f"    - Processing class {target_class}...")
+            
+            # Get indices for this class
+            class_indices = np.where(train_labels_array == target_class)[0]
+            n_class = len(class_indices)
+            
+            if n_class <= 2:
+                print(f"      Warning: Skipping (insufficient samples: {n_class})")
+                class_scores.append(0.0)
+                continue
+            
+            # Get features for this class
+            class_features = features_np[class_indices]
+            
+            # Estimate expected number of poisoned samples in this class
+            eps = max(1, int(self.percentile * n_total))
+            
+            # Apply quantum filter
+            try:
+                selected_mask, opnorm = rcov_auto_quantum_filter(
+                    class_features, eps,
+                    alpha=self.alpha, tau=self.tau
+                )
+                
+                # Samples NOT selected are considered suspicious
+                suspicious_in_class = ~selected_mask
+                suspicious_class_indices = class_indices[suspicious_in_class]
+                
+                n_suspicious = len(suspicious_class_indices)
+                print(f"      OpNorm: {opnorm:.4f}, Suspicious: {n_suspicious}")
+                
+                suspicious_indices.extend(suspicious_class_indices.tolist())
+                class_scores.append(opnorm)
+                
+            except Exception as e:
+                print(f"      Warning: Error in class {target_class}: {e}")
+                class_scores.append(0.0)
+                continue
+        
+        # Identify most suspicious class (highest opnorm)
+        if class_scores:
+            suspect_class = np.argmax(class_scores)
+            print(f"\n  Most suspicious class: {suspect_class} (opnorm: {class_scores[suspect_class]:.4f})")
+        
+        return suspicious_indices
+
+
+# ============================================================================
+# Dataset and Data Loading
+# ============================================================================
+
+class TransformedDataset(torch.utils.data.Dataset):
+    """Wrapper to apply transforms to a dataset."""
+    
+    def __init__(self, dataset, transform=None):
+        self.dataset = dataset
+        self.transform = transform
+    
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        img, label = self.dataset[idx]
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, label
+
+
+def verify_attack_exists(attack_name, model_arch, dataset, poison_rate):
+    """
+    Verify that the attack directory exists.
+    
+    Returns:
+        Path to the attack directory
+    """
+    # Convert poison_rate to the format used in directory names
+    pr_str = str(poison_rate).replace(".", "-")
+    pattern = f"{attack_name}_{model_arch}_{dataset}_p{pr_str}"
+    
+    attack_dir = RECORD_DIR / pattern
+    
+    if not attack_dir.exists():
+        raise FileNotFoundError(
+            f"Attack directory not found: {attack_dir}\n"
+            f"Expected pattern: {pattern}\n"
+            f"Make sure the attack has been trained and saved in {RECORD_DIR}"
+        )
+    
+    return attack_dir
+
+
+def load_attack_data(attack_name, dataset_name, model_arch, poison_rate, device):
+    """
+    Load backdoored model and datasets for any attack type.
+    
+    Uses the proper loading functions from eval_utils.py to handle all attack types.
+    
+    Args:
+        attack_name: Name of the attack
+        dataset_name: Dataset name (cifar10, cifar100, etc.)
+        model_arch: Model architecture (resnet18, vgg16, etc.)
+        poison_rate: Poison rate (e.g., 0.05)
+        device: torch device
+    
+    Returns:
+        dict with keys: 'model', 'bd_train', 'bd_test', 'clean_train', 'clean_test'
+    """
+    print(f"  Loading attack: {attack_name}")
+    
+    # Build attack path to detect image size (for imagenette compatibility)
+    exp_id = experiment_variable_identifier(model_arch, dataset_name, poison_rate)
+    attack_path = str(RECORD_DIR / f"{attack_name}_{exp_id}")
+    
+    # Detect image size from poisoned data (important for imagenette)
+    detected_img_size = detect_image_size_from_attack_path(attack_path)
+    img_size = detected_img_size if detected_img_size else IMG_SIZE_DICT.get(dataset_name)
+    if img_size:
+        print(f"  Detected image size: {img_size}x{img_size}")
+    
+    # Load clean record first
+    print(f"  Loading clean datasets and model...")
+    clean_record = load_clean_record(
+        dataset=dataset_name,
+        arch=model_arch,
+        record_dir=str(RECORD_DIR),
+        data_dir=str(DATA_DIR),
+        target_class=TARGET_CLASS,
+        img_size=img_size
+    )
+    
+    # Load backdoor record using eval_utils dispatcher
+    print(f"  Loading backdoored model and datasets...")
+    bd_record = load_backdoor_record(
+        dataset=dataset_name,
+        arch=model_arch,
+        atk=attack_name,
+        poison_rate=poison_rate,
+        clean_record=clean_record,
+        record_dir=str(RECORD_DIR)
+    )
+    
+    # Get the model
+    model = bd_record['model']
+    model.to(device)
+    model.eval()
+    
+    # Get datasets - try 'train' first, fallback to 'train_transformed' for DFST/Grond
+    bd_train = bd_record.get('train', None)
+    if bd_train is None:
+        bd_train = bd_record.get('train_transformed', None)
+        if bd_train is not None:
+            print(f"  Note: Using 'train_transformed' for {attack_name} (no untransformed train set available)")
+    
+    if bd_train is None:
+        # Some attacks like DFBA are data-free and don't have training data
+        raise ValueError(
+            f"No training dataset found for attack {attack_name}\n"
+            f"Available keys in bd_record: {list(bd_record.keys())}\n"
+            f"Note: SPECTRE requires training data. "
+            f"This attack may not be compatible with SPECTRE defense."
+        )
+    
+    bd_test = bd_record.get('test', None)
+    
+    # Use clean datasets from clean_record
+    clean_train = clean_record['train']
+    clean_test = clean_record['test']
+    
+    print(f"  Loaded successfully")
+    print(f"    - Model: {model_arch}")
+    print(f"    - Backdoor train samples: {len(bd_train)}")
+    if bd_test is not None:
+        print(f"    - Backdoor test samples: {len(bd_test)}")
+    print(f"    - Clean train samples: {len(clean_train)}")
+    print(f"    - Clean test samples: {len(clean_test)}")
+    
+    return {
+        'model': model,
+        'bd_train': bd_train,
+        'bd_test': bd_test,
+        'clean_train': clean_train,
+        'clean_test': clean_test,
+        'attack_record': bd_record,
+        'clean_record': clean_record
+    }
+
+
+def prepare_train_data(bd_train, batch_size=128):
+    """
+    Prepare training data for feature extraction.
+    
+    Args:
+        bd_train: Backdoored training dataset
+        batch_size: Batch size for DataLoader
+    
+    Returns:
+        tuple: (train_loader, train_labels, poison_indices)
+    """
+    print(f"  Preparing training data...")
+    
+    # Create transform to ensure tensors
+    to_tensor_transform = T.Compose([
+        T.ToImage(),
+        T.ToDtype(torch.float32, scale=True)
+    ])
+    
+    # Collect all samples and labels
+    train_samples = []
+    train_labels = []
+    
+    for i in range(len(bd_train)):
+        img, label = bd_train[i]
+        # Convert PIL Image to tensor if needed
+        if not isinstance(img, torch.Tensor):
+            img = to_tensor_transform(img)
+        train_samples.append(img)
+        train_labels.append(label)
+    
+    # Get poison indices (ground truth)
+    poison_indices = []
+    if hasattr(bd_train, 'poison_lookup') and bd_train.poison_lookup is not None:
+        for i in range(len(bd_train)):
+            if i < len(bd_train.poison_lookup) and bd_train.poison_lookup[i]:
+                poison_indices.append(i)
+    
+    print(f"    - Total training samples: {len(train_samples)}")
+    print(f"    - Poisoned samples (ground truth): {len(poison_indices)}")
+    
+    # Create dataset
+    class SimpleDataset(torch.utils.data.Dataset):
+        def __init__(self, samples, labels):
+            self.samples = samples
+            self.labels = labels
+        
+        def __len__(self):
+            return len(self.samples)
+        
+        def __getitem__(self, idx):
+            return self.samples[idx], self.labels[idx]
+    
+    train_dataset = SimpleDataset(train_samples, train_labels)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+    
+    return train_loader, train_labels, poison_indices
+
+
+# ============================================================================
+# Metrics and CSV Saving
+# ============================================================================
+
+def calculate_metrics(ground_truth, predictions):
+    """
+    Calculate detection metrics.
+    
+    Args:
+        ground_truth: Array of ground truth labels (1 for poisoned, 0 for clean)
+        predictions: List of indices predicted as poisoned
+    
+    Returns:
+        dict with TPR, FPR, precision, recall, f1, accuracy
+    """
+    if len(predictions) == 0:
+        # No detections made
+        tn = np.sum(ground_truth == 0)
+        fp = 0
+        fn = np.sum(ground_truth == 1)
+        tp = 0
+    else:
+        # Create prediction array
+        pred_array = np.zeros(len(ground_truth))
+        pred_array[predictions] = 1
+        
+        # Calculate confusion matrix
+        tn, fp, fn, tp = confusion_matrix(ground_truth, pred_array).ravel()
+    
+    # Calculate metrics
+    tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tpr
+    accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    return {
+        'TP': int(tp),
+        'TN': int(tn),
+        'FP': int(fp),
+        'FN': int(fn),
+        'TPR': float(tpr),
+        'FPR': float(fpr),
+        'precision': float(precision),
+        'recall': float(recall),
+        'f1': float(f1),
+        'accuracy': float(accuracy),
+        'detected_poisoned': int(tp + fp),  # Total flagged as poisoned
+        'detected_clean': int(tn + fn)      # Total identified as clean
+    }
+
+
+def save_results_to_csv(results, csv_path):
+    """Save results to CSV file."""
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Check if file exists to determine if we need headers
+    file_exists = csv_path.exists()
+    
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            'exp_num', 'defense_name', 'attack', 'model', 'dataset', 
+            'poison_rate', 'FPR', 'TPR', 'precision', 'recall', 'f1',
+            'detected_poisoned', 'detected_clean', 'TP', 'TN', 'FP', 'FN', 'accuracy'
+        ])
+        
+        if not file_exists:
+            writer.writeheader()
+        
+        writer.writerow(results)
+    
+    print(f"\nResults saved to: {csv_path}")
+
+
+# ============================================================================
+# Main Defense Function
+# ============================================================================
+
+def run_spectre_defense(attack_name, model_arch, dataset_name, poison_rate,
+                        percentile=0.05, alpha=4, tau=0.1, batch_size=128,
+                        random_seed=42, exp_num=None):
+    """
+    Run SPECTRE defense on a backdoor attack.
+    
+    Args:
+        attack_name: Name of the attack
+        model_arch: Model architecture
+        dataset_name: Dataset name
+        poison_rate: Poison rate
+        percentile: Expected fraction of poisoned samples
+        alpha: Exponential scaling for quantum filter
+        tau: Tail probability threshold
+        batch_size: Batch size for processing
+        random_seed: Random seed for reproducibility
+        exp_num: Experiment number (should be provided by user)
+    """
+    print("=" * 70)
+    print("SPECTRE Backdoor Defense")
+    print("=" * 70)
+    print(f"Attack: {attack_name}")
+    print(f"Model: {model_arch}")
+    print(f"Dataset: {dataset_name}")
+    print(f"Poison Rate: {poison_rate}")
+    print(f"SPECTRE Parameters: percentile={percentile}, alpha={alpha}, tau={tau}")
+    print("=" * 70)
+    
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\nDevice: {device}")
+    
+    # Set random seed
+    set_random_seed(random_seed)
+    
+    # Verify attack exists
+    print(f"\nVerifying attack directory...")
+    attack_dir = verify_attack_exists(attack_name, model_arch, dataset_name, poison_rate)
+    print(f"  Found: {attack_dir}")
+    
+    # Load attack data (handles all attack types)
+    print(f"\nLoading attack data...")
+    attack_data = load_attack_data(attack_name, dataset_name, model_arch, poison_rate, device)
+    model = attack_data['model']
+    bd_train = attack_data['bd_train']
+    
+    # Get number of classes
+    if dataset_name == 'cifar10':
+        num_classes = 10
+    elif dataset_name == 'cifar100':
+        num_classes = 100
+    elif dataset_name == 'imagenette':
+        num_classes = 10
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+    
+    # Prepare training data
+    print(f"\nPreparing data...")
+    train_loader, train_labels, poison_indices = prepare_train_data(bd_train, batch_size)
+    
+    # Create SPECTRE detector
+    print(f"\nRunning SPECTRE defense...")
+    detector = SPECTREDetector(
+        model=model,
+        model_name=model_arch,
+        device=device,
+        num_classes=num_classes,
+        percentile=percentile,
+        alpha=alpha,
+        tau=tau,
+        random_seed=random_seed
+    )
+    
+    # Run detection
+    suspicious_indices = detector.detect(train_loader, train_labels)
+    
+    # Create ground truth array
+    ground_truth = np.zeros(len(train_labels))
+    for idx in poison_indices:
+        ground_truth[idx] = 1
+    
+    # Calculate metrics
+    print(f"\nCalculating metrics...")
+    metrics = calculate_metrics(ground_truth, suspicious_indices)
+    
+    # Print results
+    print("=" * 70)
+    print("DETECTION RESULTS")
+    print("=" * 70)
+    print(f"Total samples:        {len(train_labels):6d}")
+    print(f"Poisoned (ground truth): {len(poison_indices):6d}")
+    print(f"Detected as poisoned: {metrics['detected_poisoned']:6d}")
+    print(f"Detected as clean:    {metrics['detected_clean']:6d}")
+    print("-" * 70)
+    print(f"True Positives (TP):  {metrics['TP']:6d}  (Correctly detected poisoned)")
+    print(f"True Negatives (TN):  {metrics['TN']:6d}  (Correctly identified clean)")
+    print(f"False Positives (FP): {metrics['FP']:6d}  (Clean flagged as poisoned)")
+    print(f"False Negatives (FN): {metrics['FN']:6d}  (Poisoned missed)")
+    print("-" * 70)
+    print(f"True Positive Rate (TPR/Recall): {metrics['TPR']:.4f}")
+    print(f"False Positive Rate (FPR):       {metrics['FPR']:.4f}")
+    print(f"Precision:                        {metrics['precision']:.4f}")
+    print(f"F1 Score:                         {metrics['f1']:.4f}")
+    print(f"Accuracy:                         {metrics['accuracy']:.4f}")
+    print("=" * 70)
+    
+    # Prepare results for CSV
+    csv_path = RESULTS_DIR / "spectre.csv"
+
+    results = {
+        'exp_num': exp_num,
+        'defense_name': 'SPECTRE',
+        'attack': attack_name,
+        'model': model_arch,
+        'dataset': dataset_name,
+        'poison_rate': poison_rate,
+        'FPR': metrics['FPR'],
+        'TPR': metrics['TPR'],
+        'precision': metrics['precision'],
+        'recall': metrics['recall'],
+        'f1': metrics['f1'],
+        'detected_poisoned': metrics['detected_poisoned'],
+        'detected_clean': metrics['detected_clean'],
+        'TP': metrics['TP'],
+        'TN': metrics['TN'],
+        'FP': metrics['FP'],
+        'FN': metrics['FN'],
+        'accuracy': metrics['accuracy']
+    }
+    
+    # Save results
+    save_results_to_csv(results, csv_path)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="SPECTRE Defense for Backdoor Detection",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python defenses/spectre.py --attack badnet --model resnet18 --dataset cifar10 --poison_rate 0.05 --exp_num 1
+  python defenses/spectre.py --attack wanet --model resnet18 --dataset cifar10 --poison_rate 0.05 --exp_num 2
+  python defenses/spectre.py --attack bpp --model resnet18 --dataset cifar10 --poison_rate 0.05 --exp_num 3
+"""
+    )
+    
+    # Required arguments
+    parser.add_argument('--attack', type=str, required=True,
+                        help='Attack name (badnet, blended, wanet, bpp, narcissus, adaptive_patch, adaptive_blend, dfst, grond)')
+    parser.add_argument('--model', type=str, required=True,
+                        help='Model architecture (resnet18, vgg16, etc.)')
+    parser.add_argument('--dataset', type=str, required=True,
+                        help='Dataset name (cifar10, cifar100, imagenette)')
+    parser.add_argument('--poison_rate', type=float, required=True,
+                        help='Poison rate (e.g., 0.05 for 5%%)')
+    parser.add_argument('--exp_num', type=int, required=True,
+                        help='Experiment number for tracking')
+    
+    # Optional arguments
+    parser.add_argument('--percentile', type=float, default=0.05,
+                        help='Expected fraction of poisoned samples (default: 0.05)')
+    parser.add_argument('--alpha', type=float, default=4.0,
+                        help='Exponential scaling for quantum filter (default: 4.0)')
+    parser.add_argument('--tau', type=float, default=0.1,
+                        help='Tail probability threshold (default: 0.1)')
+    parser.add_argument('--batch_size', type=int, default=128,
+                        help='Batch size for processing (default: 128)')
+    parser.add_argument('--random_seed', type=int, default=42,
+                        help='Random seed (default: 42)')
+    
+    args = parser.parse_args()
+    
+    run_spectre_defense(
+        attack_name=args.attack,
+        model_arch=args.model,
+        dataset_name=args.dataset,
+        poison_rate=args.poison_rate,
+        percentile=args.percentile,
+        alpha=args.alpha,
+        tau=args.tau,
+        batch_size=args.batch_size,
+        random_seed=args.random_seed,
+        exp_num=args.exp_num
+    )
+
+
+if __name__ == '__main__':
+    main()
