@@ -34,3 +34,12 @@ exp_num,defense_name,attack,model,dataset,poison_rate,FPR,TPR,precision,recall,f
 0,ActivationClustering,wanet,resnet18,cifar10,0.003,0.0,0.0,0.0,0.0,0.0,0,50000,0,49864,0,136,0.99728
 0,ActivationClustering,dfst,resnet18,cifar10,0.003,0.12962888665997993,0.0,0.0,0.0,0.0,6462,43538,0,43388,6462,150,0.86776
 0,ActivationClustering,adaptive_blend,resnet18,cifar10,0.003,0.12431293881644935,0.0,0.0,0.0,0.0,6197,43803,0,43653,6197,150,0.87306
+0,ActivationClustering,grond,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,dfst,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,bpp,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9429,0,40,0.9957756890907171
+0,ActivationClustering,adaptive_blend,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,narcissus,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,badnet,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,wanet,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9429,0,40,0.9957756890907171
+0,ActivationClustering,blended,resnet18,imagenette,0.003,0.0,0.0,0.0,0.0,0.0,0,9469,0,9441,0,28,0.997042982363502
+0,ActivationClustering,adaptive_patch,resnet18,imagenette,0.003,0.03421247749179113,0.0,0.0,0.0,0.0,323,9146,0,9118,323,28,0.9629316717710423
