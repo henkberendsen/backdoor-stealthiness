@@ -100,7 +100,49 @@ def calculate_residuals_heatmap(data, metric_cols, defense_cols):
 # ==========================================
 # 3. PLOTTING FUNCTION WITH MASKING
 # ==========================================
+# Label mapping for proper LaTeX rendering (using mathbf for bold math font)
+LABEL_MAP = {
+    # ===== INPUT-SPACE METRICS =====
+    'l1': r'$\mathbf{\ell_1}$',
+    'l2': r'$\mathbf{\ell_2}$',
+    'l_inf': r'$\mathbf{\ell_\infty}$',
+    'MSE': r'$\mathbf{MSE}$',
+    'PSNR': r'$\mathbf{PSNR}$',
+    'SSIM': r'$\mathbf{SSIM}$',
+    'LPIPS': r'$\mathbf{LPIPS}$',
+    'IS': r'$\mathbf{IS}$',
+    'pHash': r'$\mathbf{pHash}$',
+    'SAM': r'$\mathbf{SAM}$',
+    
+    # ===== FEATURE-SPACE METRICS =====
+    'SS': r'$\mathbf{SS}$',
+    'DSWD': r'$\mathbf{DSWD}$',
+    'CDBI': r'$\mathbf{CDBI}$',
+    'BMS': r'$\mathbf{BMS}$',
+    
+    # ===== PARAMETER-SPACE METRICS =====
+    'UCLC': r'$\mathbf{UCLC}$',
+    'TAC': r'$\mathbf{TAC}$',
+    'TUP': r'$\mathbf{TUP}$',
+    
+    # ===== DEFENSES =====
+    'SPECTRE_F1': r'$\mathbf{SPECTRE}$ $(F_1)$',
+    'STRIP_F1': r'$\mathbf{STRIP}$ $(F_1)$',
+    'SS_F1': r'$\mathbf{SS}$ $(F_1)$',
+    'IBAU_ASR': r'$\mathbf{IBAU}$ (ASR)',
+    'CLP_ASR': r'$\mathbf{CLP}$ (ASR)',
+    'FeatureRE_ASR': r'$\mathbf{FeatureRE}$ (ASR)',
+    'NC_Norm': r'$\mathbf{NC}$ (Norm)',
+    'TABOR_Score': r'$\mathbf{TABOR}$ (Score)',
+    'BTI_Detected': r'$\mathbf{BTI}$ (Detected)',
+    'BAN_Detected': r'$\mathbf{BAN}$ (Detected)',
+}
+
 def plot_significance_heatmap(corr_data, p_data, title, filename):
+    # Set math font to STIX (similar to Times/Computer Modern - classic math look)
+    plt.rcParams['mathtext.fontset'] = 'stix'
+    plt.rcParams['font.family'] = 'STIXGeneral'
+    
     plt.figure(figsize=(14, 8))
     
     # Create annotation labels: Show value only if p < 0.05
@@ -121,14 +163,22 @@ def plot_significance_heatmap(corr_data, p_data, title, filename):
                 # OPTION 2: Hide insignificant values (Uncomment below to use)
                 # annot_labels.loc[r, c] = "" 
 
-    sns.heatmap(
+    ax = sns.heatmap(
         corr_data, 
         annot=annot_labels, 
         fmt="", 
         cmap='RdBu_r', # Red = Positive (Good Metric), Blue = Negative (Bad Metric)
         center=0,
-        vmin=-1, vmax=1
+        vmin=-1, vmax=1,
+        annot_kws={'fontweight': 'bold'}
     )
+    
+    # Apply label mapping for proper math symbols
+    new_xticklabels = [LABEL_MAP.get(label.get_text(), label.get_text()) for label in ax.get_xticklabels()]
+    new_yticklabels = [LABEL_MAP.get(label.get_text(), label.get_text()) for label in ax.get_yticklabels()]
+    ax.set_xticklabels(new_xticklabels)
+    ax.set_yticklabels(new_yticklabels)
+    
     plt.title(title)
     plt.xlabel("Stealthiness Metrics (Aligned: Higher = Stealthier)")
     plt.ylabel("Defenses (Aligned: Higher = Defense Failed)")
@@ -170,7 +220,7 @@ plot_significance_heatmap(
 # ==========================================
 all_metrics = [
     'l1', 'l2', 'l_inf', 'MSE', 'PSNR', 'SSIM', 'LPIPS', 'IS', 'pHash', 'SAM',
-    'SS', 'DSWD', 'CDBI', 'BMS', 'UCLC', 'TAC', 'TUP'
+    'SS', 'DSWD', 'CDBI', 'UCLC', 'TAC', 'TUP'
 ]
 
 all_defenses = [
