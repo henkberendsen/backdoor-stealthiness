@@ -4,7 +4,7 @@ Build the canonical per-configuration stealthiness-metric matrix for the
 S&P resubmission analyses (Analysis #1 metric-disagreement, #4 ASR-sensitivity,
 #6 cross-arch, #7 minimal-set, #8 space-imbalance all consume this one table).
 
-SOURCE OF TRUTH: latex_files/metric_tables.tex (verified to match the submitted
+SOURCE OF TRUTH: residual_correlations/metric_tables.tex (verified to match the submitted
 paper for all 16 metrics). We PARSE it rather than re-transcribe, so the matrix
 has provenance back to the paper tables (addresses the "hand-curated CSV" weakness).
 
@@ -30,7 +30,7 @@ import csv
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-TEX = REPO / "latex_files" / "metric_tables.tex"
+TEX = REPO / "residual_correlations" / "metric_tables.tex"
 OUT = REPO / "analysis" / "metrics_matrix.csv"
 
 DATASETS = ["CIFAR-10", "CIFAR-100", "Tiny-ImageNet", "Imagenette"]
