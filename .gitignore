@@ -38,3 +38,6 @@ Overleaf_files/*
 !/feature_steathiness_*.txt
 *.pdf
 !/analysis/**/*.pdf
+
+# The attack implementations are git submodules of upstream forks; .gitmodules carries
+# ignore = all for them, so their pointers only change through an explicit git add <submodule>.

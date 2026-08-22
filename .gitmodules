@@ -1,15 +1,19 @@
 [submodule "backdoorbench"]
 	path = backdoorbench
 	url = https://github.com/hb140502/BackdoorBench
+	ignore = all
 [submodule "adap"]
 	path = adap
 	url = https://github.com/hb140502/Adap-Attacks
 [submodule "dfst"]
 	path = dfst
 	url = https://github.com/hb140502/DFST
+	ignore = all
 [submodule "grond"]
 	path = grond
 	url = https://github.com/hb140502/grond.git
+	ignore = all
 [submodule "dfba"]
 	path = dfba
 	url = https://github.com/hb140502/DataFree_Backdoor_Attacks
+	ignore = all
