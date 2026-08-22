@@ -1,6 +1,9 @@
 ImageHash
 ipykernel
 lpips
+# required to import the backdoorbench attack scripts (pulled in by the CTRL attack module)
+kornia
+pytorch_wavelets
 matplotlib
 pandas
 POT
