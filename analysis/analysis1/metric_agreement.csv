@@ -1,0 +1,7 @@
+group,pooled_signed,pooled_abs,stratified_signed,asr60_signed,n_pairs
+Input-Input,0.66,0.683,0.688,0.686,45
+Feature-Feature,0.567,0.567,0.613,0.442,3
+Param-Param,0.267,0.267,0.499,0.243,3
+Input-Feature,-0.112,0.167,-0.09,-0.108,30
+Input-Param,-0.235,0.265,-0.283,-0.325,30
+Feature-Param,0.353,0.353,0.425,0.29,9

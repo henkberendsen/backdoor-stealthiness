@@ -1,0 +1,8 @@
+Conclusion,All configs,ASR$\ge$60\%,ASR$\ge$80\%
+Stealthiest input-space footprint,BppAttack,BppAttack,BppAttack
+Stealthiest feature-space footprint,Adap-Patch,Adap-Patch,Adap-Patch
+Stealthiest parameter-space footprint,Grond,Grond,Grond
+Same attack best in all 3 spaces?,No,No,No
+Most balanced attack (min worst space),Grond (0.42),Grond (0.45),Grond (0.36)
+CDBI top-ranked attack,Narcissus,Narcissus,Narcissus
+TUP top-ranked attack,Grond,Narcissus,Grond
