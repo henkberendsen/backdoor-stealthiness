@@ -18,3 +18,23 @@ script_logging/*
 # anything inside run_files and job_executer_files
 run_files/*
 job_executer_files/*
+
+# anything in overleaf folder
+Overleaf_files/*
+
+# any .tex file
+*.tex
+
+# any md file
+*.md
+
+# editor settings
+.vscode/
+
+# text and pdf files outside the tracked results
+/*.txt
+!/requirements.txt
+!/*_tiny.txt
+!/feature_steathiness_*.txt
+*.pdf
+!/analysis/**/*.pdf

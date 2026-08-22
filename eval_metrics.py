@@ -30,13 +30,13 @@ torch.backends.cudnn.benchmark = False
 DATASET = "cifar10"
 DATASETS = [DATASET]
 
-if DATASET == "tiny":
-    DATA_DIR = "/home/xxu/back_stealthiness/record/data/tiny/"
-else:
-    DATA_DIR = "/home/xxu/back_stealthiness/record/data/cifar10"
-
-RECORD_DIR = "./record"
-RESULT_DIR = "/home/xxu/back_stealthiness/results"
+# Records, datasets and intermediate results all live under one directory: large_files/ next to
+# this file by default, or the directory named by the BACKDOOR_STEALTHINESS_DATA variable.
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+LARGE_FILES = os.environ.get("BACKDOOR_STEALTHINESS_DATA", os.path.join(REPO_ROOT, "large_files"))
+DATA_DIR = os.path.join(LARGE_FILES, "data")
+RECORD_DIR = os.path.join(LARGE_FILES, "record")
+RESULT_DIR = LARGE_FILES
 TARGET_CLASS = 0
 MODEL_ARCH = 'resnet18'
 MODEL_ARCHITECTURES = [MODEL_ARCH]
@@ -1306,7 +1306,7 @@ def inputspace_permodel():
     str_pr = str(pr).replace('.', '-')
     # str_pr = 'None'
     arch = 'resnet18'
-    atk_path = f"/home/xxu/back_stealthiness/record/{attack}_{arch}_tiny_p{str_pr}/"
+    atk_path = os.path.join(RECORD_DIR, f"{attack}_{arch}_tiny_p{str_pr}") + "/"
 
     clean_trainset = get_dataset(dataset, train=True, transforms=None)
     clean_testset = get_dataset(dataset, train=False, transforms=None)
@@ -1351,7 +1351,7 @@ def feature_space_permodel():
         str_pr = 'None'
     # str_pr = 'None'
     arch = 'vgg16'
-    atk_path = f"/home/xxu/back_stealthiness/record/{attack}_{arch}_cifar10_p{str_pr}/"
+    atk_path = os.path.join(RECORD_DIR, f"{attack}_{arch}_cifar10_p{str_pr}") + "/"
 
     print('atk_path: ', atk_path)
 
@@ -1394,9 +1394,8 @@ def feature_space_permodel():
     print('\n \n ----------------------------- ')
 
 
-    # state_dict = torch.load('/home/xxu/back_stealthiness/record/prototype_resnet18_tiny_pNone/clean_model.pth')
-    # state_dict = torch.load('/home/xxu/back_stealthiness/record_cn114/prototype_vit_small_cifar10_pNone/clean_model.pth')
-    state_dict = torch.load('/home/xxu/back_stealthiness/record/prototype_vgg16_cifar10_pNone/clean_model.pth')
+    # benign reference model of the architecture/dataset under evaluation
+    state_dict = torch.load(os.path.join(RECORD_DIR, 'prototype_vgg16_cifar10_pNone', 'clean_model.pth'))
     try:
         print("try load state_dict['model'].")
         model_clean = load_model_state(arch, dataset, state_dict['model'])
@@ -1463,7 +1462,7 @@ def feature_stealth_eval():
 
     print("---- ", f"{arch}_{dataset}")
 
-    dir_prefix = '/home/xxu/back_stealthiness/record/'
+    dir_prefix = RECORD_DIR + '/'
 
     for i in range(len(attack_list)):
         for j in range(len(pr1)):
@@ -1553,7 +1552,7 @@ def parameter_stealth_eval():
     attacks = list(attck_dict.keys())
     atk_pr_tuples = get_model_pr_combinations(attacks)
    
-    dir_prefix = '/home/xxu/back_stealthiness/record/'
+    dir_prefix = RECORD_DIR + '/'
 
     arch = 'resnet18'
     dataset = 'tiny'
@@ -1621,7 +1620,7 @@ def new_metric_eval():
     attacks = list(attck_dict.keys())
     atk_pr_tuples = get_model_pr_combinations(attacks)
    
-    dir_prefix = '/home/xxu/back_stealthiness/record/'
+    dir_prefix = RECORD_DIR + '/'
 
     arch = 'resnet18'
     dataset = 'tiny'
