@@ -1,0 +1,124 @@
+diff --git a/poison_loader.py b/poison_loader.py
+index facb763..0d32959 100644
+--- a/poison_loader.py
++++ b/poison_loader.py
+@@ -19,7 +19,7 @@ class folder_load(Dataset):
+     '''
+     def __init__(self, path,  T, poison_rate=1, seed=0, non_poison_indices=None):
+         self.T =  T
+-        self.targets = datasets.CIFAR10(root='~/data/', train=True).targets
++        self.targets = datasets.CIFAR10(root='~/data/', train=True, download=True).targets
+         self.trainls = [str(i) for i in range(50000)]
+         self.path = path
+         self.PILimgs = []
+@@ -31,7 +31,7 @@ class folder_load(Dataset):
+             self.PILimgs.append(im_temp)
+             img.close()
+ 
+-        self.c10  = datasets.CIFAR10('../data/', train=True)
++        self.c10  = datasets.CIFAR10('../data/', train=True, download=True)
+         self.PILc10 = [item[0] for item in self.c10]
+         if non_poison_indices is not None:
+             self.non_poison_indices = non_poison_indices
+@@ -58,7 +58,7 @@ class CIFAR10dirty(Dataset):
+ 
+     def __init__(self, root, poison_rate, seed=0, transform=None, non_poison_indices=None):
+         self.transform = transform
+-        self.c10  = datasets.CIFAR10(root, train=True)
++        self.c10  = datasets.CIFAR10(root, train=True, download=True)
+         self.targets = self.c10.targets
+ 
+         if non_poison_indices is not None:
+@@ -92,9 +92,9 @@ class POI(Dataset):
+         self.transform = transform
+ 
+         if dataset == "cifar10":
+-            self.cleanset = datasets.CIFAR10(root, train=True)
++            self.cleanset = datasets.CIFAR10(root, train=True, download=True)
+         elif dataset == "cifar100":
+-            self.cleanset = datasets.CIFAR100(root, train=True)
++            self.cleanset = datasets.CIFAR100(root, train=True, download=True)
+         elif dataset == "imagenette":
+             self.cleanset = datasets.ImageFolder(os.path.join(root, "train"))
+         elif dataset == "tiny":
+@@ -120,17 +120,27 @@ class POI(Dataset):
+         self.upgd_data = torch.load(os.path.join(upgd_path, 'upgd_'+str(target_cls)+'.pth'), map_location='cpu')
+         self.totensor = transforms.Compose([transforms.ToTensor()])
+         self.toimg = transforms.Compose([transforms.ToPILImage()])
++        
++        # Store the expected image size from upgd_data for resizing (needed for imagenette)
++        self.upgd_size = self.upgd_data.shape[-1]  # Assumes square images (H=W)
++        self.dataset = dataset
+ 
+ 
+     def __getitem__(self, index):
+         if index in self.poison_indices:
+             img = self.cleanset[index][0]
++            # Resize image to match upgd_data size (important for imagenette which has varying sizes)
++            if self.dataset == "imagenette" and img.size[0] != self.upgd_size:
++                img = img.resize((self.upgd_size, self.upgd_size))
+             img_tensor = torch.clamp(self.totensor(img)+self.upgd_data, 0, 1)
+             img = self.toimg(img_tensor)
+             target = self.targets[index]
+         else: 
+             target = self.targets[index]
+             img = self.cleanset[index][0]
++            # Also resize non-poisoned images for consistency
++            if self.dataset == "imagenette" and img.size[0] != self.upgd_size:
++                img = img.resize((self.upgd_size, self.upgd_size))
+ 
+         if self.transform is not None:
+             img = self.transform(img)
+@@ -144,11 +154,12 @@ class POI_TEST(Dataset):
+ 
+     def __init__(self, dataset, root, seed=0, transform=None, exclude_target=True, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/upgd-cifar10-ResNet18-Linf-eps8.0/'):
+         self.transform = transform
++        self.dataset = dataset
+ 
+         if dataset == "cifar10":
+-            self.cleanset = datasets.CIFAR10(root, train=False)
++            self.cleanset = datasets.CIFAR10(root, train=False, download=True)
+         elif dataset == "cifar100":
+-            self.cleanset = datasets.CIFAR100(root, train=False)
++            self.cleanset = datasets.CIFAR100(root, train=False, download=True)
+         elif dataset == "imagenette":
+             self.cleanset = datasets.ImageFolder(os.path.join(root, "val"))
+         elif dataset == "tiny":
+@@ -163,6 +174,9 @@ class POI_TEST(Dataset):
+         self.upgd_data = torch.load(os.path.join(upgd_path, 'upgd_'+str(target_cls)+'.pth'), map_location='cpu')
+         self.totensor = transforms.Compose([transforms.ToTensor()])
+         self.toimg = transforms.Compose([transforms.ToPILImage()])
++        
++        # Store the expected image size from upgd_data for resizing (needed for imagenette)
++        self.upgd_size = self.upgd_data.shape[-1]  # Assumes square images (H=W)
+ 
+         if exclude_target:
+             # Imagenette and Tiny ImageNet have different attribute names than CIFAR10(0)
+@@ -179,6 +193,9 @@ class POI_TEST(Dataset):
+ 
+     def __getitem__(self, index):
+         img = self.cleanset[index][0]
++        # Resize image to match upgd_data size (important for imagenette which has varying sizes)
++        if self.dataset == "imagenette" and img.size[0] != self.upgd_size:
++            img = img.resize((self.upgd_size, self.upgd_size))
+         img_tensor = torch.clamp(self.totensor(img)+self.upgd_data, 0, 1)
+         img = self.toimg(img_tensor)
+         target = self.targets[index]
+@@ -348,7 +365,7 @@ class CIFAR10_Noise(Dataset):
+ 
+     def __init__(self, root, poison_rate, seed=0, transform=None, poison_indices=None, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/cifar10_random_noise/random.pth'):
+         self.transform = transform
+-        self.c10 = datasets.CIFAR10(root, train=True)
++        self.c10 = datasets.CIFAR10(root, train=True, download=True)
+         self.targets = self.c10.targets
+         self.target_cls = target_cls
+ 
+@@ -391,7 +408,7 @@ class CIFAR10_Noise_TEST(Dataset):
+ 
+     def __init__(self, root, seed=0, transform=None, exclude_target=True, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/cifar10_random_noise/random.pth'):
+         self.transform = transform
+-        self.c10 = datasets.CIFAR10(root, train=False)
++        self.c10 = datasets.CIFAR10(root, train=False, download=True)
+         self.targets = self.c10.targets
+ 
+         non_target_cls_ids = [i for i in range(len(self.c10.targets)) if self.c10.targets[i] != target_cls]

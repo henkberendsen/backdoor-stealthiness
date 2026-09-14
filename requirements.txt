@@ -1,20 +1,25 @@
-ImageHash
-ipykernel
-lpips
-# required to import the backdoorbench attack scripts (pulled in by the CTRL attack module)
-kornia
-pytorch_wavelets
-matplotlib
-pandas
-POT
-scikit-image
-scikit-learn
-scipy
-timm
-torch
-torchmetrics
-torchvision
-
-# necessary because of importing backdoorbench save_prototype_result, not actually used
-seaborn
-umap-learn
+# Reference environment: Python 3.11.3. The pinned versions are the ones the paper's numbers
+# were produced with; the t-SNE-based metrics (SS, CDBI) in particular depend on the
+# scikit-learn version, so keep it fixed when reproducing the tables.
+torch==2.5.1
+torchvision==0.20.1
+numpy==1.26.4
+scipy==1.14.1
+pandas==2.2.3
+scikit-learn==1.5.2
+scikit-image==0.25.2
+matplotlib==3.9.2
+pillow==11.0.0
+tqdm==4.66.6
+pyyaml==6.0.2
+lpips==0.1.4
+ImageHash==4.3.2
+torchmetrics==1.5.1
+POT==0.9.6.post1
+timm==1.0.17
+seaborn==0.13.2
+ipykernel==6.29.5
+# imported unconditionally by the BackdoorBench attack modules (CTRL attack), needed only to
+# train BackdoorBench attacks, not to evaluate records
+kornia==0.8.3
+pytorch_wavelets==1.3.0
