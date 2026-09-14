@@ -31,18 +31,18 @@ BASE_URL = f"https://zenodo.org/records/{ZENODO_RECORD}/files/"
 
 # component -> (tarball, sha256, approximate size). Unpacks to large_files/<component>/.
 MANIFEST = {
-    "record": ("record.tar", "SHA256_RECORD", "6.0 GB"),
-    "feature_space_train": ("feature_space_train.tar", "SHA256_FEATURE_SPACE_TRAIN", "0.3 GB"),
-    "feature_space_test": ("feature_space_test.tar", "SHA256_FEATURE_SPACE_TEST", "2.0 GB"),
-    "tac_activations": ("tac_activations.tar", "SHA256_TAC_ACTIVATIONS", "1.9 GB"),
-    "predictions_test_all_labels": ("predictions_test_all_labels.tar", "SHA256_PREDICTIONS", "8 MB"),
-    "tsne": ("tsne.tar", "SHA256_TSNE", "0.1 GB"),
-    "data": ("data.tar", "SHA256_DATA", "1.0 GB"),
+    "record": ("record.tar", "ad13b4702979fc7c44e3d3ce8cc145386631d5921192ab81ece131403040219d", "6.0 GB"),
+    "feature_space_train": ("feature_space_train.tar", "f92e1a6b842005512139d2045eb65684264714d353d9eb8a46a75abc8e5aef81", "0.3 GB"),
+    "feature_space_test": ("feature_space_test.tar", "155f702130799fbada807a873b6db2c76429a2914a98616c29deb5d811bfcf41", "2.0 GB"),
+    "tac_activations": ("tac_activations.tar", "4e1d9c8fbe9835f4aa5ceff18373badc07a67eadf2feb7c7c5851532595d49f0", "1.9 GB"),
+    "predictions_test_all_labels": ("predictions_test_all_labels.tar", "b7173b3c619663282d20feee4aa8bdc993f18405cc3fbaef4cb1e71e4cc5384e", "8 MB"),
+    "tsne": ("tsne.tar", "31e20632dd65ed807e934c40050081d4877034495be62ecc943369ccdd3844ff", "0.1 GB"),
+    "data": ("data.tar", "d406430395fd3183b5219bdcde01620c52c3d09b932c0182085211c0881f150a", "1.0 GB"),
     # retrained replicates used in the robustness analyses; unpack under large_files/replicates/
-    "record_seeds": ("record_seeds.tar", "SHA256_RECORD_SEEDS", "1.8 GB"),
-    "record_targets": ("record_targets.tar", "SHA256_RECORD_TARGETS", "0.8 GB"),
-    "xiaoyun_replicates": ("xiaoyun_replicates.tar", "SHA256_XIAOYUN_REPLICATES", "2.0 GB"),
-    "vgg_records": ("vgg_records.tar", "SHA256_VGG_RECORDS", "2.6 GB"),
+    "record_seeds": ("record_seeds.tar", "75ee16bc21a430943d9bb2d8e9871042862602215c3aed0b97bed9061ae1419d", "1.8 GB"),
+    "record_targets": ("record_targets.tar", "bccd3a21389328023e190c0f553b803456e6386191ec593452d638057b594068", "0.8 GB"),
+    "xiaoyun_replicates": ("xiaoyun_replicates.tar", "680a98785f6735c804b0d162f696914fb3966366879cfb2f64d85f7ea8d1aee4", "2.0 GB"),
+    "vgg_records": ("vgg_records.tar", "d4b8c0e1cfef6b37311c806beefee58f4946740c62ded508a932987c63d525d5", "2.6 GB"),
 }
 REPLICATES = {"record_seeds", "record_targets", "xiaoyun_replicates", "vgg_records"}
 
