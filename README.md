@@ -60,7 +60,7 @@ that are both trigger-responsive and downstream-influential (lower = stealthier)
 ## Setup
 
 ```bash
-git clone --recurse-submodules <REPO_URL> backdoor-stealthiness
+git clone --recurse-submodules https://github.com/henkberendsen/backdoor-stealthiness.git
 cd backdoor-stealthiness
 python -m venv .venv && source .venv/bin/activate
 bash setup.sh            # submodules, loader patch, Python dependencies
@@ -255,5 +255,6 @@ the paper's appendix.
 }
 ```
 
-The code in this repository is released under the <LICENSE> license (see `LICENSE`). The attack
-implementations in the submodules keep the licenses of their original authors.
+The code in this repository is released under the MIT license (see [LICENSE](LICENSE)); the data
+package on Zenodo is released under CC BY 4.0. The attack implementations in the submodules keep
+the licenses of their original authors.
