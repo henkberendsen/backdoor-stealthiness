@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files"))
 
 # Zenodo record holding the tarballs. Filled in when the record is published.
-ZENODO_RECORD = "ZENODO_RECORD_ID"
+ZENODO_RECORD = "22757053"
 BASE_URL = f"https://zenodo.org/records/{ZENODO_RECORD}/files/"
 
 # component -> (tarball, sha256, approximate size). Unpacks to large_files/<component>/.

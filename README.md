@@ -75,7 +75,8 @@ rewrites the absolute paths that BackdoorBench stores inside its `attack_result.
 ## Data
 
 Everything that is too large for git lives under `large_files/` and is published as verified
-tarballs on Zenodo (DOI `<ZENODO_DOI>`). `python scripts/download_data.py --list` prints the
+tarballs on Zenodo (DOI [10.5281/zenodo.22757053](https://doi.org/10.5281/zenodo.22757053)).
+`python scripts/download_data.py --list` prints the
 manifest; components can be fetched individually.
 
 | Component | Contents | Size |
