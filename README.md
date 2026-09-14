@@ -110,7 +110,7 @@ string. Every loader and script also accepts `--large_files` (or the environment
 | [tri-space_cdbi.py](tri-space_cdbi.py) | Tri-space summary scores. |
 | [reproduce_analyses.sh](reproduce_analyses.sh) | Runs every derived analysis in one go. |
 | [eval_metrics.py](eval_metrics.py), [eval.ipynb](eval.ipynb) | The original evaluation driver and its notebook front end, kept for reference; the settings block at the top of the driver selects the configuration. |
-| [run_files/](run_files/), [job_executer.sh](job_executer.sh) | SLURM job generators used on our cluster (one job per configuration). |
+| [job_executer.sh](job_executer.sh) | SLURM job template used on our cluster (one job per configuration). The per-experiment job generators are cluster-specific and not part of the artifact. |
 | `adap/ backdoorbench/ dfba/ dfst/ grond/` | The attack implementations (git submodules of our forks); each has its own `train.sh`. |
 | [fix_all_backdoorbench_paths.py](fix_all_backdoorbench_paths.py), [preprocess_imagenette.py](preprocess_imagenette.py), [tinyimagenet.py](tinyimagenet.py) | Data utilities: record path repair, Imagenette downscaling to 80x80, a Tiny-ImageNet dataset class with a CIFAR-like interface. |
 
