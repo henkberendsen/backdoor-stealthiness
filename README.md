@@ -86,7 +86,7 @@ manifest; components can be fetched individually.
 | `tac_activations/` | activation differences between clean and triggered test images for TAC and TUP | 1.9 GB |
 | `predictions_test_all_labels/` | test-set predictions used for benign accuracy | 8 MB |
 | `tsne/` | the fixed-seed t-SNE embeddings and plots behind SS and CDBI | 0.1 GB |
-| `data/` | the datasets in the layout the loaders expect (CIFAR-10/100 as torchvision folders, Imagenette at 80x80) | 1.0 GB |
+| `data/` | the datasets in the layout the loaders expect: CIFAR-10/100 as torchvision folders and the raw 160px Imagenette, which the loaders centre-crop and resize to 80x80 on the fly (`preprocess_imagenette.py` applies the same transformation in place for training) | 1.0 GB |
 | `replicates/` | retrained models for the robustness analyses: five training seeds, two extra target classes, independent Grond/Adap-Patch re-runs, VGG16 checkpoints | 7 GB |
 
 Records are named `<attack>_<arch>_<dataset>_p<rate>` with the decimal point of the poisoning
@@ -241,6 +241,9 @@ the paper's appendix.
   through floating-point summation order; rankings are unaffected.
 - **Target class.** All attacks target class 0. Records trained with other target classes are
   evaluated with `--target_class`.
+- **Imagenette preprocessing.** All Imagenette models were trained on 80x80 images obtained by
+  centre-cropping the 160px release to a square and resizing. The loaders apply exactly this
+  transformation to the raw images, so evaluation sees the training distribution.
 - **Paths.** Nothing is hardcoded to a machine: paths derive from the repository location or from
   `BACKDOOR_STEALTHINESS_DATA` / `BACKDOOR_STEALTHINESS_REPLICATES`.
 

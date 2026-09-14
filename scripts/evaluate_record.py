@@ -233,12 +233,10 @@ def main():
 
     if "input" in args.spaces:
         print("input space ...")
-        # raw pixels: reload the clean test set and the record with ToTensor only
-        clean_px = get_dataset(args.dataset, train=False, transforms=pixel_transform,
-                               data_dir=str(dirs["data"]), img_size=img_size)
-        clean_px = filter_target_class(clean_px, args.target_class)
-        clean_px_record = {"train": clean_px, "test": clean_px, "train_transformed": clean_px,
-                           "test_transformed": clean_px, "model": clean["model"]}
+        # raw pixels: reload the clean record and the attack record with ToTensor only
+        clean_px_record = load_clean(args.dataset, args.model, dirs, pixel_transform,
+                                     args.target_class, img_size)
+        clean_px = clean_px_record["test"]
         bd_px = load_backdoor(args.attack, record_dir, args.dataset, args.model, clean_px_record,
                               pixel_transform, args.target_class)["test"]
         if len(bd_px) != len(clean_px):

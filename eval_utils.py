@@ -73,6 +73,19 @@ from ot import wasserstein_1d
 # =============================================================================
 
 
+def square_resize(img, size):
+    """
+    Centre-crops a PIL image to a square on its shorter side and resizes it to size x size.
+
+    This is the preprocessing of preprocess_imagenette.py (CenterCrop + Resize with bilinear
+    interpolation); applying it on the fly lets the loaders consume the raw 160px Imagenette
+    download and still see exactly the images the models were trained on.
+    """
+    side = min(img.size)
+    img = torchvision.transforms.functional.center_crop(img, side)
+    return img.resize((size, size), Image.BILINEAR)
+
+
 class Imagenette(torchvision.datasets.VisionDataset):
     """
     Custom torchvision implementation of the Imagenette dataset with automatic download.
@@ -147,14 +160,14 @@ class Imagenette(torchvision.datasets.VisionDataset):
         self.data = []
         self.targets = []
 
-        # Load all images into numpy arrays for backward compatibility
-        # Imagenette images have varying dimensions, so we resize them to a consistent size
-        print(f"Loading Imagenette {split} set into memory (resizing to {img_size}x{img_size})...")
+        # Load all images into numpy arrays for backward compatibility.
+        # Imagenette images have varying dimensions: make each one square with a centre crop on
+        # its shorter side, then resize -- the same preprocessing as preprocess_imagenette.py,
+        # which produced the images the models were trained on.
+        print(f"Loading Imagenette {split} set into memory (centre crop + resize to {img_size}x{img_size})...")
         for idx in range(len(base_dataset)):
             img, label = base_dataset[idx]
-            # Convert to RGB and resize to consistent dimensions
-            img = img.convert("RGB")
-            img = img.resize((img_size, img_size), Image.BILINEAR)
+            img = square_resize(img.convert("RGB"), img_size)
             img_array = np.array(img)
 
             if len(img_array.shape) != 3:
