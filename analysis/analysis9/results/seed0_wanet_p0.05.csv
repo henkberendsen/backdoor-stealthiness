@@ -1,0 +1,2 @@
+variant,attack,dataset,model,poison_rate,target_class,BA,ASR,SS,CDBI,DSWD,UCLC,TAC,TUP,n_benign,n_poisoned,seconds
+seed0,wanet,cifar10,resnet18,0.05,0,0.934,0.9848,0.418777,0.502239,1.832504,6.328341,10.721193,9.303792,4730,2500,63.5

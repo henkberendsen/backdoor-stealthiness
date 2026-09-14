@@ -46,7 +46,6 @@ grond / adaptive_patch specifics:
 """
 import argparse
 import csv
-import getpass
 import os
 import sys
 import time
@@ -81,7 +80,11 @@ from eval_utils import (                              # noqa: E402
     TUP,
 )
 
-SCRATCH = Path("/scratch-shared") / getpass.getuser() / "backdoor-stealthiness"
+# Retrained replicate records (record_seeds/, record_targets/, xiaoyun_replicates/) are read from
+# large_files/replicates/ by default, or from the directory named by the
+# BACKDOOR_STEALTHINESS_REPLICATES variable.
+SCRATCH = Path(os.environ.get("BACKDOOR_STEALTHINESS_REPLICATES",
+                              REPO_ROOT / "large_files" / "replicates"))
 PUBLISHED_RECORDS = REPO_ROOT / "large_files" / "record"
 INTERMEDIATE = SCRATCH / "step3_intermediate"
 OUT_DIR = Path(__file__).resolve().parent / "results"
@@ -98,13 +101,22 @@ VARIANTS = {
     "seed0": (PUBLISHED_RECORDS, PUBLISHED_RECORDS, 0),
     "seed1": (SCRATCH / "record_seeds" / "seed1", SCRATCH / "record_seeds" / "seed1", 0),
     "seed2": (SCRATCH / "record_seeds" / "seed2", SCRATCH / "record_seeds" / "seed2", 0),
+    "seed3": (SCRATCH / "record_seeds" / "seed3", SCRATCH / "record_seeds" / "seed3", 0),
+    "seed4": (SCRATCH / "record_seeds" / "seed4", SCRATCH / "record_seeds" / "seed4", 0),
+    # target variants are trained with seed 0, so they use the published prototype
     "t1": (SCRATCH / "record_targets" / "t1", PUBLISHED_RECORDS, 1),
     "t2": (SCRATCH / "record_targets" / "t2", PUBLISHED_RECORDS, 2),
-    "xrun2": (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, 0),
-    "xrun3": (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, 0),
 }
-# the rerun records sit in flat dirs named <attack>_<exp_id>_runN
-RECORD_SUFFIX = {"xrun2": "_run2", "xrun3": "_run3"}
+# the rerun records sit in flat dirs named <attack>_<exp_id>[_targetT]_runN;
+# all use the published prototype as the TAC/TUP reference
+RECORD_SUFFIX = {}
+for _n in (2, 3, 4, 5):
+    VARIANTS[f"xrun{_n}"] = (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, 0)
+    RECORD_SUFFIX[f"xrun{_n}"] = f"_run{_n}"
+for _t in (1, 2):
+    for _n in (1, 2, 3, 4, 5):
+        VARIANTS[f"xt{_t}run{_n}"] = (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, _t)
+        RECORD_SUFFIX[f"xt{_t}run{_n}"] = f"_target{_t}_run{_n}"
 BB_ATTACKS = ["badnet", "blended", "wanet", "bpp"]
 MARKERS = {"grond": "checkpoint.pth", "adaptive_patch": "model.pt"}
 
@@ -192,7 +204,8 @@ def main():
         # no untransformed "train" key; train_transformed carries the same
         # deterministic transform under this protocol
         bd_record = load_grond(str(record_path), args.dataset, args.model,
-                               transform_dict=transform_dict)
+                               transform_dict=transform_dict,
+                               target_class=target_class)
         trainset_bd = bd_record["train_transformed"]
     else:  # adaptive_patch: poisons are merged into deterministic clean datasets
         clean_dsets = {}
@@ -202,7 +215,8 @@ def main():
             if key.startswith("test"):
                 ds = filter_target_class(ds, target_class)
             clean_dsets[key] = ds
-        bd_record = load_adap(str(record_path), args.dataset, args.model, clean_dsets)
+        bd_record = load_adap(str(record_path), args.dataset, args.model, clean_dsets,
+                              target_class=target_class)
         trainset_bd = bd_record["train"]
     model_bd = bd_record["model"]
     testset_bd = bd_record["test"]
