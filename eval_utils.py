@@ -2007,16 +2007,17 @@ def load_backdoorbench(atk, atk_path, dataset, arch, transform_dict=None, target
     return record
 
 
-def load_adap(atk_path, dataset, arch, clean_record):
+def load_adap(atk_path, dataset, arch, clean_record, target_class=0):
     """
     Loads Adaptive Patch/Blend attack results.
-    
+
     Args:
         atk_path (str): Path to attack record directory
         dataset (str): Dataset name
         arch (str): Model architecture
         clean_record (dict): Clean record with datasets
-        
+        target_class (int): Target class of the attack
+
     Returns:
         dict: Record with 'train', 'test', 'train_transformed', 'test_transformed', 'model'
     """
@@ -2025,7 +2026,7 @@ def load_adap(atk_path, dataset, arch, clean_record):
     # Load backdoored data
     for key in ["train", "test", "train_transformed", "test_transformed"]:
         split = key.split('_')[0]
-        record[key] = AdapDataset(atk_path, target_class=0, split=split, 
+        record[key] = AdapDataset(atk_path, target_class=target_class, split=split,
                                  clean_dataset=clean_record[key])
     
     # Load model
@@ -2096,16 +2097,18 @@ def load_dfba(atk_path, dataset, arch, clean_record):
     return record
 
 
-def load_grond(atk_path, dataset, arch, transform_dict=None):
+def load_grond(atk_path, dataset, arch, transform_dict=None, target_class=0):
     """
     Loads Grond attack results.
-    
+
     Args:
         atk_path (str): Path to attack record directory
         dataset (str): Dataset name
         arch (str): Model architecture
         transform_dict (dict, optional): Transform dictionary
-        
+        target_class (int): Target class of the attack; the record's trigger
+            file is named upgd_<target_class>.pth
+
     Returns:
         dict: Record with 'test', 'train_transformed', 'test_transformed', 'model'
     """
@@ -2116,8 +2119,8 @@ def load_grond(atk_path, dataset, arch, transform_dict=None):
         is_train = "train" in key
         transform_key = f"{dataset}_{key}"
         transforms = transform_dict.get(transform_key) if transform_dict else None
-        
-        record[key] = GrondDataset(dataset, transforms, target_class=0, 
+
+        record[key] = GrondDataset(dataset, transforms, target_class=target_class,
                                    record_path=atk_path, train=is_train)
 
     # Load model
