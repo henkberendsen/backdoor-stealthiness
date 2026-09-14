@@ -490,6 +490,13 @@ def SAM(img1, img2):
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 
+# Fixed t-SNE configuration for the feature-space metrics (SS and CDBI): two components,
+# perplexity 30, PCA initialisation and a fixed random state, so that the embedding -- and
+# therefore both metrics -- are reproducible across runs.
+TSNE_SEED = 0
+TSNE_KWARGS = dict(n_components=2, perplexity=30.0, init="pca", learning_rate="auto",
+                   random_state=TSNE_SEED)
+
 def create_tsne(trainset, feature_path, skip_misclassified=False, show_plot=False, save_dst=None):
     # Load target-label predictions, features the train data indices they belong to from the specified file
     feature_dict = torch.load(feature_path, weights_only=False)
@@ -505,7 +512,7 @@ def create_tsne(trainset, feature_path, skip_misclassified=False, show_plot=Fals
 
     # Perform dimensionality reduction on the extracted features
     def reduce_feature_dimensionality(features):
-        return TSNE().fit_transform(features)
+        return TSNE(**TSNE_KWARGS).fit_transform(features)
 
     features_embedded = reduce_feature_dimensionality(features)
 

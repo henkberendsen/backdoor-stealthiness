@@ -24,7 +24,8 @@ Supported Metrics:
                        Trigger-Activated Change (TAC), TAC-UCLC Product (TUP)
 
 Author: Research Team
-Reference: "Quiet Triggers, Loud Footprints: On Backdoor Attacks Stealthiness in Image Domain"
+Reference: "Quiet Triggers, Loud Footprints: A Tri-Space Measurement Study of Backdoor
+            Stealthiness" (IEEE S&P 2027)
 """
 
 import copy
@@ -47,6 +48,14 @@ from tqdm import tqdm
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, davies_bouldin_score, mean_squared_error
 from sklearn.preprocessing import normalize
+
+# Fixed t-SNE configuration for the feature-space metrics (SS and CDBI): two components,
+# perplexity 30, PCA initialisation and a fixed random state, so that the embedding -- and
+# therefore both metrics -- are reproducible across runs. Every t-SNE in this repository
+# must go through TSNE_KWARGS.
+TSNE_SEED = 0
+TSNE_KWARGS = dict(n_components=2, perplexity=30.0, init="pca", learning_rate="auto",
+                   random_state=TSNE_SEED)
 
 # Image quality metrics
 from numpy.linalg import norm
@@ -1136,7 +1145,7 @@ def create_tsne(trainset, feature_path, skip_misclassified=False, show_plot=Fals
 
     # Perform dimensionality reduction with t-SNE
     print("Running t-SNE dimensionality reduction...")
-    features_embedded = TSNE().fit_transform(features)
+    features_embedded = TSNE(**TSNE_KWARGS).fit_transform(features)
 
     # Split features into benign, poisoned, and cross-trigger
     def split_features(features, poison_lookup, cross_lookup, indices):
@@ -1291,7 +1300,9 @@ def CDBI(features_benign, features_poisoned, gt_labels_poisoned, n_classes):
             - cdbi_per_class: List of DBI values for each class with poisoned samples
             
     Note:
-        - Lower CDBI indicates more stealthy backdoor (less separable subclusters)
+        - Higher CDBI indicates a more stealthy backdoor: the class-specific poisoned
+          subclusters overlap more with the benign cluster (larger within-cluster
+          scatter relative to the centroid distance)
         - Classes without poisoned samples are skipped (common for target class
           in clean-label attacks and DFST)
           
