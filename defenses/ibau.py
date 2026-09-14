@@ -51,9 +51,11 @@ from eval_utils import (
 )
 
 # Constants
-RECORD_DIR = REPO_ROOT / "large_files" / "record"
+# the data package: large_files/ next to the repository, or $BACKDOOR_STEALTHINESS_DATA
+LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files"))
+RECORD_DIR = LARGE_FILES / "record"
 RESULTS_DIR = REPO_ROOT / "defenses" / "results"
-DATA_DIR = REPO_ROOT / "large_files" / "data"
+DATA_DIR = LARGE_FILES / "data"
 TARGET_CLASS = 0
 
 # Attack type classification
