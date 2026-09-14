@@ -248,6 +248,14 @@ the paper's appendix.
 - **Paths.** Nothing is hardcoded to a machine: paths derive from the repository location or from
   `BACKDOOR_STEALTHINESS_DATA` / `BACKDOOR_STEALTHINESS_REPLICATES`.
 
+## Ethical considerations
+
+The artifact contains backdoored image classifiers and the poisoned versions of public benchmark
+datasets (CIFAR-10, CIFAR-100, Imagenette). No human-subject data is involved. The models
+implement attacks that are already published, were trained only to measure their footprints, and
+are of no use outside evaluation and defense research; releasing them lets others verify the
+measurements and test new defenses without retraining. The datasets keep their original licenses.
+
 ## Citation and license
 
 ```bibtex
