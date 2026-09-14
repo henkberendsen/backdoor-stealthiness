@@ -22,8 +22,9 @@ job_executer_files/*
 # anything in overleaf folder
 Overleaf_files/*
 
-# any .tex file
+# any .tex file, except the result tables the metric matrix is parsed from
 *.tex
+!/residual_correlations/*.tex
 
 # any md file, except the README files that document the code
 *.md
