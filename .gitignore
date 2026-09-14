@@ -27,8 +27,8 @@ Overleaf_files/*
 
 # any md file, except the README files that document the code
 *.md
-!README.md
-!analysis/README.md
+!/README.md
+!/analysis/README.md
 
 # editor settings
 .vscode/
