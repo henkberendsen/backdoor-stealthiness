@@ -23,5 +23,10 @@ run tri-space_cdbi.py                                             # tri-space su
 run residual_correlations/residual_corr.py                        # Fig. 3 (residual defense-metric associations)
 
 echo
-echo "All analyses finished. Changed files, if any:"
-git status --short -- analysis residual_correlations tri_space_metrics_cdbi_high.csv tri_space_metrics_cdbi_low.csv residuals_heatmap_all.png || true
+echo "All analyses finished."
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "Changed files, if any:"
+    git status --short -- analysis residual_correlations tri_space_metrics_cdbi_high.csv tri_space_metrics_cdbi_low.csv residuals_heatmap_all.png || true
+else
+    echo "(plain source tree: compare the regenerated CSVs with the ones in the archive if needed)"
+fi
