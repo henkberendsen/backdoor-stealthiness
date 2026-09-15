@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup of the evaluation environment.
 #
-#   bash setup.sh            # submodules, local loader patch, Python dependencies
+#   bash setup.sh            # attack implementations, loader patch, Python dependencies
 #   bash setup.sh --data     # additionally download and unpack the large files (see below)
 #
 # The large files (trained records, saved features and activations, datasets) are not part of
@@ -11,8 +11,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "== attack implementations (git submodules)"
-git submodule update --init --recursive
+echo "== attack implementations"
+if [ -d .git ]; then
+    git submodule update --init --recursive          # git checkout: fetch the submodules
+elif [ -f backdoorbench/utils/save_load_attack.py ]; then
+    echo "source archive: the attack implementations are already included"
+else
+    echo "the attack implementations are missing (no git checkout and no bundled copies)" >&2
+    exit 1
+fi
 
 # Our Grond fork needs two small changes to load the published Imagenette records (the UPGD
 # trigger is 80x80, the raw images are not) and to download CIFAR on first use.

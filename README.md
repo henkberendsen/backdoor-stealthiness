@@ -59,23 +59,34 @@ that are both trigger-responsive and downstream-influential (lower = stealthier)
 
 ## Setup
 
+The code is archived on Zenodo (DOI [10.5281/zenodo.22770223](https://doi.org/10.5281/zenodo.22770223))
+as `backdoor-stealthiness-sp2027-artifact.tar.gz`, a complete source tree with the attack
+implementations included and the loader patch applied, and developed on GitHub. Either source
+works:
+
 ```bash
-git clone --recurse-submodules https://github.com/henkberendsen/backdoor-stealthiness.git
-cd backdoor-stealthiness
+# from the archive
+tar -xzf backdoor-stealthiness-sp2027-artifact.tar.gz && cd backdoor-stealthiness-sp2027-artifact
+# or from GitHub
+git clone --recurse-submodules https://github.com/henkberendsen/backdoor-stealthiness.git && cd backdoor-stealthiness
+
 python -m venv .venv && source .venv/bin/activate
-bash setup.sh            # submodules, loader patch, Python dependencies
+bash setup.sh            # attack implementations, loader patch, Python dependencies
 bash setup.sh --data     # additionally download and unpack the data package (~10 GB download)
 ```
 
-`setup.sh` applies [patches/grond_poison_loader.patch](patches/grond_poison_loader.patch) to the
-Grond submodule (two small fixes needed to load the published Imagenette records) and, with
-`--data`, runs `scripts/download_data.py` followed by `fix_all_backdoorbench_paths.py`, which
-rewrites the absolute paths that BackdoorBench stores inside its `attack_result.pt` files.
+`setup.sh` fetches the submodules when run from a git checkout, applies
+[patches/grond_poison_loader.patch](patches/grond_poison_loader.patch) to the Grond implementation
+(two small changes needed to load the published Imagenette records; already applied in the
+archive) and, with `--data`, runs `scripts/download_data.py` followed by
+`fix_all_backdoorbench_paths.py`, which rewrites the absolute paths that BackdoorBench stores
+inside its `attack_result.pt` files.
 
 ## Data
 
 Everything that is too large for git lives under `large_files/` and is published as verified
-tarballs on Zenodo (DOI [10.5281/zenodo.22757053](https://doi.org/10.5281/zenodo.22757053)).
+tarballs in the companion Zenodo data record (DOI
+[10.5281/zenodo.22757053](https://doi.org/10.5281/zenodo.22757053)).
 `python scripts/download_data.py --list` prints the
 manifest; components can be fetched individually.
 
