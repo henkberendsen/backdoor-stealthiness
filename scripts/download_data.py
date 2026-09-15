@@ -59,8 +59,14 @@ def sha256(path, chunk=1 << 22):
 
 
 def download(url, dest):
+    last = [-1]
+
     def report(blocks, block_size, total):
         done = blocks * block_size
+        step = done // (64 * 2**20)          # one line per 64 MiB keeps logs readable
+        if step == last[0]:
+            return
+        last[0] = step
         if total > 0:
             sys.stdout.write(f"\r    {done / 2**30:6.2f} / {total / 2**30:6.2f} GiB")
         else:
