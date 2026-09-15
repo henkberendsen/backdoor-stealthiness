@@ -16,6 +16,7 @@ poisoned datasets (many small PNG files), so unpacking it takes a few minutes.
 """
 import argparse
 import hashlib
+import json
 import os
 import sys
 import tarfile
@@ -25,9 +26,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files"))
 
-# Zenodo record holding the tarballs. Filled in when the record is published.
-ZENODO_RECORD = "22757053"
-BASE_URL = f"https://zenodo.org/records/{ZENODO_RECORD}/files/"
+# Concept DOI of the Zenodo record: it always resolves to the latest version, whose file links
+# are read from the API at run time.
+ZENODO_CONCEPT = "22757052"
+API_URL = f"https://zenodo.org/api/records/{ZENODO_CONCEPT}"
 
 # component -> (tarball, sha256, approximate size). Unpacks to large_files/<component>/.
 MANIFEST = {
@@ -93,8 +95,10 @@ def main():
     unknown = [c for c in args.components if c not in MANIFEST]
     if unknown:
         raise SystemExit(f"unknown component(s): {unknown}; see --list")
-    if ZENODO_RECORD == "ZENODO_RECORD_ID":
-        raise SystemExit("the Zenodo record of this artifact is not set yet; see the README")
+    with urllib.request.urlopen(API_URL, timeout=120) as resp:
+        record = json.load(resp)
+    links = {f["key"]: f["links"]["self"] for f in record.get("files", [])}
+    print(f"Zenodo record {record.get('id')} (version {record.get('metadata', {}).get('version', '?')})")
 
     tar_dir = LARGE_FILES / "tarballs"
     tar_dir.mkdir(parents=True, exist_ok=True)
@@ -107,7 +111,9 @@ def main():
         tar_path = tar_dir / fname
         if not (tar_path.exists() and sha256(tar_path) == digest):
             print(f"[{name}] downloading {fname} ({size}) ...")
-            download(BASE_URL + fname, tar_path)
+            if fname not in links:
+                raise SystemExit(f"[{name}] {fname} is not in the Zenodo record")
+            download(links[fname], tar_path)
             actual = sha256(tar_path)
             if actual != digest:
                 raise SystemExit(f"[{name}] checksum mismatch: expected {digest}, got {actual}")

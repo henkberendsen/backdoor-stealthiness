@@ -59,10 +59,11 @@ that are both trigger-responsive and downstream-influential (lower = stealthier)
 
 ## Setup
 
-The code is archived on Zenodo (DOI [10.5281/zenodo.22770223](https://doi.org/10.5281/zenodo.22770223))
-as `backdoor-stealthiness-sp2027-artifact.tar.gz`, a complete source tree with the attack
-implementations included and the loader patch applied, and developed on GitHub. Either source
-works:
+Code and data are archived together on Zenodo under one DOI,
+[10.5281/zenodo.22757052](https://doi.org/10.5281/zenodo.22757052): the source archive
+`backdoor-stealthiness-sp2027-artifact.tar.gz` (a complete source tree with the attack
+implementations included and the loader patch applied) next to the data tarballs. The code is
+developed on GitHub. Either source works:
 
 ```bash
 # from the archive
@@ -85,8 +86,9 @@ inside its `attack_result.pt` files.
 ## Data
 
 Everything that is too large for git lives under `large_files/` and is published as verified
-tarballs in the companion Zenodo data record (DOI
-[10.5281/zenodo.22757053](https://doi.org/10.5281/zenodo.22757053)).
+tarballs in the same Zenodo record as the code (DOI
+[10.5281/zenodo.22757052](https://doi.org/10.5281/zenodo.22757052)); the download script always
+reads the latest version of the record.
 `python scripts/download_data.py --list` prints the
 manifest; components can be fetched individually.
 
@@ -272,7 +274,7 @@ measurements and test new defenses without retraining. The datasets keep their o
 ```bibtex
 @inproceedings{quiet-triggers-2027,
   title     = {Quiet Triggers, Loud Footprints: A Tri-Space Measurement Study of Backdoor Stealthiness},
-  author    = {Picek, Stjepan and Xu, Xiaoyun and Berendsen, Henk and Tajalli, Behrad},
+  author    = {Tajalli, Behrad and Berendsen, Henk and Xu, Xiaoyun and Picek, Stjepan},
   booktitle = {IEEE Symposium on Security and Privacy (SP)},
   year      = {2027}
 }
