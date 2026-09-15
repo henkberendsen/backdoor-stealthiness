@@ -120,7 +120,10 @@ def main():
         print(f"[{name}] checksum ok; unpacking to {target_root} ...")
         target_root.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tar_path) as tar:
-            tar.extractall(target_root)
+            if hasattr(tarfile, "data_filter"):          # Python 3.12+: safe extraction filter
+                tar.extractall(target_root, filter="data")
+            else:
+                tar.extractall(target_root)
         if not args.keep_tar:
             tar_path.unlink()
     print("done")
