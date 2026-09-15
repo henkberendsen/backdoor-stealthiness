@@ -22,7 +22,9 @@ GPU, but the t-SNE runs take a few minutes per configuration, so run it as a job
 
 Output: results/tables/feature_parameter_<arch>/<dataset>.csv (one row per configuration).
 Use --large_files to point at a different intermediates directory and --attacks to restrict
-the run to a subset of attacks.
+the run to a subset of attacks. --tsne_seed overrides the random state of the embedding (and
+--tsne_dir keeps the resulting embeddings apart from the default ones), which is how the
+sensitivity of SS and CDBI to the seed can be checked.
 """
 import argparse
 import csv
@@ -38,6 +40,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np                                    # noqa: E402
 import torch                                          # noqa: E402
+import eval_utils                                     # noqa: E402
 from eval_utils import (                              # noqa: E402
     CDBI,
     DSWD,
@@ -138,11 +141,19 @@ def main():
                     help="directory holding record/, data/, feature_space_*/, tac_activations/")
     ap.add_argument("--out", default=None,
                     help="output CSV (default: results/tables/feature_parameter_<model>/<dataset>.csv)")
+    ap.add_argument("--tsne_seed", type=int, default=None,
+                    help="random state of the t-SNE (default: eval_utils.TSNE_KWARGS)")
+    ap.add_argument("--tsne_dir", default=None,
+                    help="directory for the embeddings (default: <large_files>/tsne)")
     args = ap.parse_args()
+    if args.tsne_seed is not None:
+        eval_utils.TSNE_KWARGS["random_state"] = args.tsne_seed
 
     large = Path(args.large_files)
     dirs = {name: large / name for name in ["record", "data", "feature_space_train",
                                              "feature_space_test", "tac_activations", "tsne"]}
+    if args.tsne_dir:
+        dirs["tsne"] = Path(args.tsne_dir)
     exp_id = f"{args.model}_{args.dataset}"
     feature_dir = dirs["feature_space_train"] / exp_id
     if not feature_dir.is_dir():
