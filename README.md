@@ -169,9 +169,10 @@ python scripts/feature_parameter_metrics.py --model resnet18 --dataset imagenett
 ```
 
 Each run writes `results/tables/feature_parameter_resnet18/<dataset>.csv` (one row per
-configuration) and stores the t-SNE embeddings under `large_files/tsne/`. Expected outcome: UCLC, TAC, TUP and DSWD reproduce the published values; SS and CDBI depend on the
-t-SNE embedding and reproduce the attack rankings, with values that can differ slightly from the
-printed ones. The two 2%
+configuration) and stores the t-SNE embeddings under `large_files/tsne/`. Expected outcome: UCLC, TAC, TUP and DSWD reproduce the published values; SS and CDBI reproduce
+the attack rankings, with values that can differ slightly from the printed ones because the
+printed tables were computed before the t-SNE seed was fixed in the code (random state 0, see
+[Notes on reproducibility](#notes-on-reproducibility)). The two 2%
 CIFAR-10 variants of WaNet and Bpp in the tables have no saved training features and are skipped.
 
 ### 3. Evaluating a record end to end (GPU recommended)
