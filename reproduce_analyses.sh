@@ -19,14 +19,13 @@ run analysis/analysis7/analysis7_uncertainty.py                   # bootstrap co
 run analysis/analysis10/analysis10_agreement_excluding_derived.py # agreement without PSNR, CDBI, TUP
 run analysis/analysis8/aggregate_ranking_agreement.py             # CDBI embedding sensitivity (aggregation)
 run analysis/analysis9/aggregate_seed_stability.py                # seed / target-class stability (aggregation)
-run tri-space_cdbi.py                                             # tri-space summary scores
 run residual_correlations/residual_corr.py                        # Fig. 3 (residual defense-metric associations)
 
 echo
 echo "All analyses finished."
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "Changed files, if any:"
-    git status --short -- analysis residual_correlations tri_space_metrics_cdbi_high.csv tri_space_metrics_cdbi_low.csv residuals_heatmap_all.png || true
+    git status --short -- analysis residual_correlations residuals_heatmap_all.png || true
 else
     echo "(plain source tree: compare the regenerated CSVs with the ones in the archive if needed)"
 fi

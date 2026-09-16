@@ -121,7 +121,6 @@ string. Every loader and script also accepts `--large_files` (or the environment
 | [defenses/](defenses/) | Standalone defense CLIs: STRIP, Spectral Signatures, SPECTRE, Activation Clustering, I-BAU. Their results are committed under `defenses/results/`. |
 | [analysis/](analysis/) | The derived analyses of the paper over the shared `metrics_matrix.csv`; see [analysis/README.md](analysis/README.md). |
 | [residual_correlations/](residual_correlations/) | Residual association between footprints and defense outcomes (Figure 3). |
-| [tri-space_cdbi.py](tri-space_cdbi.py) | Tri-space summary scores. |
 | [reproduce_analyses.sh](reproduce_analyses.sh) | Runs every derived analysis in one go. |
 | [eval_metrics.py](eval_metrics.py), [eval.ipynb](eval.ipynb) | The original evaluation driver and its notebook front end, kept for reference; the settings block at the top of the driver selects the configuration. |
 | [job_executer.sh](job_executer.sh) | SLURM job template used on our cluster (one job per configuration). The per-experiment job generators are cluster-specific and not part of the artifact. |
@@ -152,7 +151,6 @@ bash reproduce_analyses.sh
 | Agreement without the derived metrics (PSNR, CDBI, TUP) | `analysis/analysis10/analysis10_agreement_excluding_derived.py` | `analysis/analysis10/agreement_excluding_derived.csv` |
 | CDBI sensitivity to the embedding (raw, PCA, t-SNE seeds and perplexities) | `analysis/analysis8/aggregate_ranking_agreement.py` | `analysis/analysis8/cdbi_sensitivity_summary.csv` |
 | Stability across training seeds and target classes | `analysis/analysis9/aggregate_seed_stability.py` | `analysis/analysis9/seed_stability_summary.csv` |
-| Tri-space summary scores | `tri-space_cdbi.py` | `tri_space_metrics_cdbi_{high,low}.csv` |
 | Figure 3: residual footprint-defense associations | `residual_correlations/residual_corr.py` | `residuals_heatmap_all.png` |
 
 The scripts rewrite their outputs in place, so `git status` afterwards shows whether anything
