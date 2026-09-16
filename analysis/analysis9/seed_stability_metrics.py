@@ -30,7 +30,7 @@ One record per invocation (a GPU job), appending one row to its own CSV:
 Variants: seed0 (published records), seed1/seed2 (scratch replicates),
 t1/t2 (target-class variants; badnet only, trained with seed 0),
 xrun2/xrun3 (independent grond / adaptive_patch reruns, stored flat under
-xiaoyun_replicates/ with a _runN dir suffix).
+record_reruns/ with a _runN dir suffix).
 
 grond / adaptive_patch specifics:
   * record markers differ (checkpoint.pth / model.pt instead of
@@ -80,7 +80,7 @@ from eval_utils import (                              # noqa: E402
     TUP,
 )
 
-# Retrained replicate records (record_seeds/, record_targets/, xiaoyun_replicates/) are read from
+# Retrained replicate records (record_seeds/, record_targets/, record_reruns/) are read from
 # large_files/replicates/ by default, or from the directory named by the
 # BACKDOOR_STEALTHINESS_REPLICATES variable.
 SCRATCH = Path(os.environ.get("BACKDOOR_STEALTHINESS_REPLICATES",
@@ -111,11 +111,11 @@ VARIANTS = {
 # all use the published prototype as the TAC/TUP reference
 RECORD_SUFFIX = {}
 for _n in (2, 3, 4, 5):
-    VARIANTS[f"xrun{_n}"] = (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, 0)
+    VARIANTS[f"xrun{_n}"] = (SCRATCH / "record_reruns", PUBLISHED_RECORDS, 0)
     RECORD_SUFFIX[f"xrun{_n}"] = f"_run{_n}"
 for _t in (1, 2):
     for _n in (1, 2, 3, 4, 5):
-        VARIANTS[f"xt{_t}run{_n}"] = (SCRATCH / "xiaoyun_replicates", PUBLISHED_RECORDS, _t)
+        VARIANTS[f"xt{_t}run{_n}"] = (SCRATCH / "record_reruns", PUBLISHED_RECORDS, _t)
         RECORD_SUFFIX[f"xt{_t}run{_n}"] = f"_target{_t}_run{_n}"
 BB_ATTACKS = ["badnet", "blended", "wanet", "bpp"]
 MARKERS = {"grond": "checkpoint.pth", "adaptive_patch": "model.pt"}

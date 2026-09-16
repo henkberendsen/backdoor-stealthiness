@@ -43,10 +43,10 @@ MANIFEST = {
     # retrained replicates used in the robustness analyses; unpack under large_files/replicates/
     "record_seeds": ("record_seeds.tar", "75ee16bc21a430943d9bb2d8e9871042862602215c3aed0b97bed9061ae1419d", "1.8 GB"),
     "record_targets": ("record_targets.tar", "bccd3a21389328023e190c0f553b803456e6386191ec593452d638057b594068", "0.8 GB"),
-    "xiaoyun_replicates": ("xiaoyun_replicates.tar", "680a98785f6735c804b0d162f696914fb3966366879cfb2f64d85f7ea8d1aee4", "2.0 GB"),
+    "record_reruns": ("record_reruns.tar", "f4817555d03a76cbe9e350e682e23fc35f807990e526d39890df545de9edb410", "1.9 GB"),
     "vgg_records": ("vgg_records.tar", "d4b8c0e1cfef6b37311c806beefee58f4946740c62ded508a932987c63d525d5", "2.6 GB"),
 }
-REPLICATES = {"record_seeds", "record_targets", "xiaoyun_replicates", "vgg_records"}
+REPLICATES = {"record_seeds", "record_targets", "record_reruns", "vgg_records"}
 
 
 def sha256(path, chunk=1 << 22):
