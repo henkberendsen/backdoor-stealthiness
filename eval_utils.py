@@ -86,6 +86,30 @@ def square_resize(img, size):
     return img.resize((size, size), Image.BILINEAR)
 
 
+def link_imagenette_splits(root, dataset_folder):
+    """
+    Makes root/train and root/val point at root/<dataset_folder>/train and .../val.
+
+    The links are relative, so they stay valid when the data directory is moved or copied to
+    another machine; a link that no longer resolves is replaced.
+
+    Args:
+        root (str): Imagenette root directory (e.g., 'large_files/data/imagenette')
+        dataset_folder (str): Folder of the unpacked release inside root (e.g., 'imagenette2-160')
+    """
+    for split_name in ["train", "val"]:
+        symlink_path = os.path.join(root, split_name)
+        target = os.path.join(dataset_folder, split_name)
+        if os.path.islink(symlink_path) and not os.path.exists(symlink_path):
+            os.remove(symlink_path)
+        if not os.path.lexists(symlink_path) and os.path.exists(os.path.join(root, target)):
+            try:
+                os.symlink(target, symlink_path)
+                print(f"Created symlink: {symlink_path} -> {target}")
+            except OSError as e:
+                print(f"Warning: Could not create symlink {symlink_path}: {e}")
+
+
 class Imagenette(torchvision.datasets.VisionDataset):
     """
     Custom torchvision implementation of the Imagenette dataset with automatic download.
@@ -143,15 +167,7 @@ class Imagenette(torchvision.datasets.VisionDataset):
         # Create symlinks for BackdoorBench compatibility
         # BackdoorBench expects data at imagenette/train and imagenette/val
         # but torchvision downloads to imagenette/imagenette2-160/train etc.
-        for split_name in ["train", "val"]:
-            symlink_path = os.path.join(self.root, split_name)
-            target_path = os.path.join(dataset_path, split_name)
-            if not os.path.exists(symlink_path) and os.path.exists(target_path):
-                try:
-                    os.symlink(target_path, symlink_path)
-                    print(f"Created symlink: {symlink_path} -> {target_path}")
-                except OSError as e:
-                    print(f"Warning: Could not create symlink {symlink_path}: {e}")
+        link_imagenette_splits(self.root, dataset_folder)
 
         self.classes = [
             'tench', 'English springer', 'cassette player', 'chain saw', 'church',
