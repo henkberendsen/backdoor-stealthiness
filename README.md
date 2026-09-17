@@ -52,7 +52,9 @@ that are both trigger-responsive and downstream-influential (lower = stealthier)
 - A CUDA GPU is recommended for evaluating records and running defenses; the derived analyses
   and the table regeneration in steps 1 and 2 below run on a CPU (step 2 uses many cores if
   available). About 16 GB of RAM.
-- Disk: 0.5 GB for the repository and its submodules, about 15 GB for the unpacked data package.
+- Disk: 0.5 GB for the repository and its submodules; about 25 GB for the complete data package
+  (19 GB of downloads), or about 16 GB (13 GB of downloads) without the retrained replicates,
+  which only the robustness analyses read.
 - Internet access on first use: torchvision downloads CIFAR, and the LPIPS and Inception weights
   behind the LPIPS and IS metrics are fetched once into the PyTorch cache. On clusters whose
   compute nodes are offline, run one input-space evaluation on a login node first.
@@ -73,15 +75,16 @@ git clone --recurse-submodules https://github.com/henkberendsen/backdoor-stealth
 
 python -m venv .venv && source .venv/bin/activate
 bash setup.sh            # attack implementations, loader patch, Python dependencies
-bash setup.sh --data     # additionally download and unpack the data package (~10 GB download)
+bash setup.sh --data     # additionally download and unpack the data package (19 GB download)
+bash setup.sh --data --no-replicates     # ... without the retrained replicates (13 GB download)
 ```
 
 `setup.sh` fetches the submodules when run from a git checkout, applies
 [patches/grond_poison_loader.patch](patches/grond_poison_loader.patch) to the Grond implementation
 (two small changes needed to load the published Imagenette records; already applied in the
-archive) and, with `--data`, runs `scripts/download_data.py` followed by
-`fix_all_backdoorbench_paths.py`, which rewrites the absolute paths that BackdoorBench stores
-inside its `attack_result.pt` files.
+archive) and, with `--data`, runs `scripts/download_data.py` (everything after `--data` is passed
+on to it) followed by `fix_all_backdoorbench_paths.py`, which rewrites the absolute paths that
+BackdoorBench stores inside its `attack_result.pt` files.
 
 ## Data
 
@@ -90,7 +93,8 @@ tarballs in the same Zenodo record as the code (DOI
 [10.5281/zenodo.22757052](https://doi.org/10.5281/zenodo.22757052)); the download script always
 reads the latest version of the record.
 `python scripts/download_data.py --list` prints the
-manifest; components can be fetched individually.
+manifest; components can be fetched individually, and `--no-replicates` fetches everything the
+reproduction steps below need.
 
 | Component | Contents | Size |
 |---|---|---|
@@ -99,9 +103,9 @@ manifest; components can be fetched individually.
 | `feature_space_test/` | clean and triggered test features plus predictions, per configuration | 2.0 GB |
 | `tac_activations/` | activation differences between clean and triggered test images for TAC and TUP | 1.9 GB |
 | `predictions_test_all_labels/` | test-set predictions used for benign accuracy | 8 MB |
-| `tsne/` | the fixed-seed t-SNE embeddings and plots behind SS and CDBI | 0.1 GB |
-| `data/` | the datasets in the layout the loaders expect: CIFAR-10/100 as torchvision folders and the raw 160px Imagenette, which the loaders centre-crop and resize to 80x80 on the fly (`preprocess_imagenette.py` applies the same transformation in place for training) | 1.0 GB |
-| `replicates/` | retrained models for the robustness analyses: five training seeds, two extra target classes, independent Grond/Adap-Patch re-runs, VGG16 checkpoints | 7 GB |
+| `tsne/` | the fixed-seed t-SNE embeddings and plots behind SS and CDBI | 9 MB |
+| `data/` | the datasets in the layout the loaders expect: CIFAR-10/100 as torchvision folders and the raw 160px Imagenette, which the loaders centre-crop and resize to 80x80 on the fly (`preprocess_imagenette.py` applies the same transformation in place for training) | 0.9 GB |
+| `replicates/` | retrained models for the robustness analyses: five training seeds, two extra target classes, independent Grond/Adap-Patch re-runs, VGG16 checkpoints | 6 GB |
 
 Records are named `<attack>_<arch>_<dataset>_p<rate>` with the decimal point of the poisoning
 rate replaced by a dash (`badnet_resnet18_cifar10_p0-05`); DFBA has no poisoning rate and uses
@@ -154,8 +158,9 @@ bash reproduce_analyses.sh
 | Figure 3: residual footprint-defense associations | `residual_correlations/residual_corr.py` | `residuals_heatmap_all.png` |
 
 The scripts rewrite their outputs in place, so `git status` afterwards shows whether anything
-differs from the committed reference. The CSV outputs are deterministic (the bootstrap uses a
-fixed seed); the PDFs re-render with new metadata but identical content.
+differs from the committed reference (in a source tree unpacked from the archive, `diff -rq`
+against a second unpacked copy does the same). The CSV outputs are deterministic (the bootstrap
+uses a fixed seed); the PDFs re-render with new metadata but identical content.
 
 ### 2. Footprint tables from the published intermediates (CPU, about one hour per dataset)
 
@@ -169,11 +174,15 @@ python scripts/feature_parameter_metrics.py --model resnet18 --dataset imagenett
 ```
 
 Each run writes `results/tables/feature_parameter_resnet18/<dataset>.csv` (one row per
-configuration) and stores the t-SNE embeddings under `large_files/tsne/`. Expected outcome: UCLC, TAC, TUP and DSWD reproduce the published values; SS and CDBI reproduce
-the attack rankings, with values that can differ slightly from the printed ones because the
-printed tables were computed before the t-SNE seed was fixed in the code (random state 0, see
-[Notes on reproducibility](#notes-on-reproducibility)). The two 2%
-CIFAR-10 variants of WaNet and Bpp in the tables have no saved training features and are skipped.
+configuration) and stores the t-SNE embeddings under `large_files/tsne/`, replacing the
+published ones (`--tsne_dir` writes them elsewhere). Expected outcome: UCLC, TAC, TUP and DSWD
+reproduce the published values; SS and CDBI reproduce the attack rankings, with values that can
+differ from the printed ones, most visibly where the poisoned samples are few or form no compact
+cluster, because the printed tables were computed before the t-SNE seed was fixed in the code
+(random state 0, see [Notes on reproducibility](#notes-on-reproducibility)). The low-rate
+CIFAR-10 rows of WaNet and Bpp in the tables are 2% models, which have no saved training
+features and are skipped; the 0.3% WaNet and Bpp rows of the CIFAR-10 output are additional
+configurations without a counterpart in the tables.
 
 ### 3. Evaluating a record end to end (GPU recommended)
 
@@ -191,8 +200,9 @@ Useful options: `--spaces performance input feature parameter` selects the space
 `--sample_size N` limits the number of clean/triggered image pairs for the input-space metrics
 (LPIPS and IS run neural networks and are slow on a CPU); `--recompute --intermediates DIR`
 re-extracts every intermediate into `DIR` instead of reading the published ones. With the
-published intermediates the row for BadNets on CIFAR-10 at 5% is BA 94.5, ASR 100, l1 13.2,
-PSNR 25.8, SSIM 0.956, SS 0.507, DSWD 2.01, CDBI 0.574, UCLC 6.59, TAC 3.90, TUP 16.2 (Tables 2,
+published intermediates (including the published t-SNE embeddings, which step 2 replaces unless
+it is given `--tsne_dir`) the row for BadNets on CIFAR-10 at 5% is BA 94.5, ASR 100, l1 13.2,
+PSNR 25.8, SSIM 0.956, SS 0.506, DSWD 2.01, CDBI 0.575, UCLC 6.59, TAC 3.90, TUP 16.2 (Tables 2,
 4, 5, 6 and 10 of the paper).
 
 ### 4. Defenses
