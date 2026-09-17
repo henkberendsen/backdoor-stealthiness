@@ -8,6 +8,7 @@ with the right checksum is not downloaded again. Components can be selected indi
 --list prints the manifest without downloading anything:
 
     python scripts/download_data.py                       # everything
+    python scripts/download_data.py --no-replicates       # everything but the retrained replicates
     python scripts/download_data.py record tsne           # selected components
     python scripts/download_data.py --list
 
@@ -18,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import sys
 import tarfile
 import urllib.request
@@ -38,13 +40,13 @@ MANIFEST = {
     "feature_space_test": ("feature_space_test.tar", "155f702130799fbada807a873b6db2c76429a2914a98616c29deb5d811bfcf41", "2.0 GB"),
     "tac_activations": ("tac_activations.tar", "4e1d9c8fbe9835f4aa5ceff18373badc07a67eadf2feb7c7c5851532595d49f0", "1.9 GB"),
     "predictions_test_all_labels": ("predictions_test_all_labels.tar", "b7173b3c619663282d20feee4aa8bdc993f18405cc3fbaef4cb1e71e4cc5384e", "8 MB"),
-    "tsne": ("tsne.tar", "31e20632dd65ed807e934c40050081d4877034495be62ecc943369ccdd3844ff", "0.1 GB"),
-    "data": ("data.tar", "d406430395fd3183b5219bdcde01620c52c3d09b932c0182085211c0881f150a", "1.0 GB"),
+    "tsne": ("tsne.tar", "31e20632dd65ed807e934c40050081d4877034495be62ecc943369ccdd3844ff", "9 MB"),
+    "data": ("data.tar", "5ebf3e0073f1cfd7e01bba14daf4ccd5189fcbb5ace8a64fb3260a61951b84b3", "0.9 GB"),
     # retrained replicates used in the robustness analyses; unpack under large_files/replicates/
     "record_seeds": ("record_seeds.tar", "75ee16bc21a430943d9bb2d8e9871042862602215c3aed0b97bed9061ae1419d", "1.8 GB"),
     "record_targets": ("record_targets.tar", "bccd3a21389328023e190c0f553b803456e6386191ec593452d638057b594068", "0.8 GB"),
     "record_reruns": ("record_reruns.tar", "f4817555d03a76cbe9e350e682e23fc35f807990e526d39890df545de9edb410", "1.9 GB"),
-    "vgg_records": ("vgg_records.tar", "d4b8c0e1cfef6b37311c806beefee58f4946740c62ded508a932987c63d525d5", "2.6 GB"),
+    "vgg_records": ("vgg_records.tar", "6d688f9476a61a546b24ec0cb1c76ae693fcc93e9324e6fed0237071e98bdef3", "1.4 GB"),
 }
 REPLICATES = {"record_seeds", "record_targets", "record_reruns", "vgg_records"}
 
@@ -84,8 +86,12 @@ def main():
     ap.add_argument("components", nargs="*", default=list(MANIFEST),
                     help="components to fetch (default: all)")
     ap.add_argument("--list", action="store_true", help="print the manifest and exit")
+    ap.add_argument("--no-replicates", action="store_true",
+                    help="skip the retrained replicates, which only the robustness analyses read")
     ap.add_argument("--keep-tar", action="store_true", help="keep the tarballs after unpacking")
     args = ap.parse_args()
+    if args.no_replicates:
+        args.components = [c for c in args.components if c not in REPLICATES]
 
     if args.list:
         for name, (fname, digest, size) in MANIFEST.items():
@@ -119,11 +125,17 @@ def main():
                 raise SystemExit(f"[{name}] checksum mismatch: expected {digest}, got {actual}")
         print(f"[{name}] checksum ok; unpacking to {target_root} ...")
         target_root.mkdir(parents=True, exist_ok=True)
+        # unpack next to the destination and move the finished directory into place, so that an
+        # interrupted run never leaves a partial directory that looks complete
+        partial = target_root / f".{name}.partial"
+        shutil.rmtree(partial, ignore_errors=True)
         with tarfile.open(tar_path) as tar:
-            if hasattr(tarfile, "data_filter"):          # Python 3.12+: safe extraction filter
-                tar.extractall(target_root, filter="data")
+            if hasattr(tarfile, "data_filter"):          # safe extraction filter where available
+                tar.extractall(partial, filter="data")
             else:
-                tar.extractall(target_root)
+                tar.extractall(partial)
+        (partial / name).rename(target_root / name)
+        shutil.rmtree(partial, ignore_errors=True)
         if not args.keep_tar:
             tar_path.unlink()
     print("done")

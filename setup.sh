@@ -3,6 +3,9 @@
 #
 #   bash setup.sh            # attack implementations, loader patch, Python dependencies
 #   bash setup.sh --data     # additionally download and unpack the large files (see below)
+#   bash setup.sh --data --no-replicates     # ... without the retrained replicates
+#
+# Everything after --data is passed on to scripts/download_data.py (component names, options).
 #
 # The large files (trained records, saved features and activations, datasets) are not part of
 # the git repository. They are published as tarballs on Zenodo; scripts/download_data.py
@@ -38,9 +41,11 @@ python -m pip install -r requirements.txt
 
 if [[ "${1:-}" == "--data" ]]; then
     echo "== large files"
-    python scripts/download_data.py
+    python scripts/download_data.py "${@:2}"
     # BackdoorBench records store absolute paths from the machine that trained them
-    python fix_all_backdoorbench_paths.py
+    if [ -d "${BACKDOOR_STEALTHINESS_DATA:-large_files}/record" ]; then
+        python fix_all_backdoorbench_paths.py
+    fi
 fi
 
 mkdir -p script_logging results/tables
