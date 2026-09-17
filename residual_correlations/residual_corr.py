@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
 from scipy.stats import spearmanr
+import matplotlib
+matplotlib.use("Agg")  # the figures are written to files; no display is needed
 import seaborn as sns
 import matplotlib.pyplot as plt
 
