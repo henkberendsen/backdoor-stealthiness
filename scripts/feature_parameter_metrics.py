@@ -137,7 +137,8 @@ def main():
     ap.add_argument("--dataset", default="cifar10")
     ap.add_argument("--attacks", nargs="*", default=None,
                     help="restrict to these attacks (default: every saved configuration)")
-    ap.add_argument("--large_files", default=str(REPO_ROOT / "large_files"),
+    ap.add_argument("--large_files", default=os.environ.get("BACKDOOR_STEALTHINESS_DATA",
+                                                             str(REPO_ROOT / "large_files")),
                     help="directory holding record/, data/, feature_space_*/, tac_activations/")
     ap.add_argument("--out", default=None,
                     help="output CSV (default: results/tables/feature_parameter_<model>/<dataset>.csv)")

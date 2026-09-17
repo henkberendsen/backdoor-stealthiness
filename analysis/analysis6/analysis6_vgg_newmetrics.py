@@ -11,8 +11,8 @@ Coverage: CDBI needs poisoned training data -> Grond, Narcissus only (DFBA is da
 undefined, as on ResNet). TUP -> Grond, Narcissus, DFBA. Too few attacks for a rank
 correlation; we report values/orderings.
 
-Run on a CPU login node: we patch torch.load to map_location='cpu' (records were saved on GPU)
-and seed t-SNE (np.random.seed) for reproducibility. Needs: module load 2023 && module load Python/3.11.3-GCCcore-12.3.0
+Runs on a CPU: we patch torch.load to map_location='cpu' (records were saved on GPU) and seed
+t-SNE (np.random.seed) for reproducibility.
 """
 import sys, os, numpy as np, torch
 from pathlib import Path
@@ -26,10 +26,12 @@ torch.load = lambda *a, **k: (k.setdefault("map_location", "cpu"), _orig(*a, **k
 import eval_utils as eu
 import pandas as pd
 
-RECORD = str(REPO / "large_files" / "record")
-DATA = str(REPO / "large_files" / "data")
-FTRAIN = REPO / "large_files" / "feature_space_train"
-TAC = REPO / "large_files" / "tac_activations"
+# the data package: large_files/ next to the repository, or $BACKDOOR_STEALTHINESS_DATA
+LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO / "large_files"))
+RECORD = str(LARGE_FILES / "record")
+DATA = str(LARGE_FILES / "data")
+FTRAIN = LARGE_FILES / "feature_space_train"
+TAC = LARGE_FILES / "tac_activations"
 NCLS = {"cifar10": 10, "cifar100": 100, "imagenette": 10}
 SEED = 42
 

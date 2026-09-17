@@ -29,6 +29,7 @@ a shared CSV so the configurations can be run as independent jobs:
 """
 import argparse
 import csv
+import os
 import sys
 import time
 from pathlib import Path
@@ -51,9 +52,11 @@ from eval_utils import (  # noqa: E402
     IMG_SIZE_DICT,
 )
 
-RECORD_DIR = REPO_ROOT / "large_files" / "record"
-DATA_DIR = REPO_ROOT / "large_files" / "data"
-FEATURE_DIR = REPO_ROOT / "large_files" / "feature_space_train"
+# the data package: large_files/ next to the repository, or $BACKDOOR_STEALTHINESS_DATA
+LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files"))
+RECORD_DIR = LARGE_FILES / "record"
+DATA_DIR = LARGE_FILES / "data"
+FEATURE_DIR = LARGE_FILES / "feature_space_train"
 OUT_CSV = Path(__file__).resolve().parent / "cdbi_embedding_sensitivity.csv"
 TARGET_CLASS = 0
 

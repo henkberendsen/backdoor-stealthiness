@@ -20,8 +20,11 @@ BACKDOORBENCH_ATTACKS = ["badnet", "blended", "wanet", "bpp", "narcissus"]
 # Get the absolute path to the repository root
 REPO_ROOT = Path(__file__).parent.resolve()
 
+# the data package: large_files/ next to this file, or $BACKDOOR_STEALTHINESS_DATA
+LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files")).resolve()
+
 # Define paths
-RECORD_DIR = REPO_ROOT / "large_files" / "record"
+RECORD_DIR = LARGE_FILES / "record"
 CHANGE_PATHS_SCRIPT = REPO_ROOT / "change_hardcoded_paths.py"
 
 # New path (current machine)
