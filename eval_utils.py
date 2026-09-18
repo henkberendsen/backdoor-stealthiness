@@ -30,6 +30,7 @@ Reference: "Quiet Triggers, Loud Footprints: A Tri-Space Measurement Study of Ba
 
 import copy
 import numpy as np
+import io
 import os
 import pandas as pd
 import sys
@@ -78,12 +79,19 @@ def square_resize(img, size):
     Centre-crops a PIL image to a square on its shorter side and resizes it to size x size.
 
     This is the preprocessing of preprocess_imagenette.py (CenterCrop + Resize with bilinear
-    interpolation); applying it on the fly lets the loaders consume the raw 160px Imagenette
-    download and still see exactly the images the models were trained on.
+    interpolation, written back as JPEG with PIL's default settings); applying it on the fly,
+    JPEG re-encoding included, lets the loaders consume the raw 160px Imagenette download and
+    still see pixel for pixel the images the models were trained on.
     """
     side = min(img.size)
     img = torchvision.transforms.functional.center_crop(img, side)
-    return img.resize((size, size), Image.BILINEAR)
+    img = img.resize((size, size), Image.BILINEAR)
+    # preprocess_imagenette.py saved the resized images as JPEG (PIL defaults); re-encoding the
+    # same way reproduces those files exactly, which the poisoned records were built from
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    return Image.open(buf).convert("RGB")
 
 
 def link_imagenette_splits(root, dataset_folder):
@@ -552,6 +560,13 @@ class DFBADataset(BackdoorDataset):
                         poison_lookup, cross_lookup)
 
 
+def data_dir_of_record(record_path):
+    """The data/ directory of the data package a record belongs to: records live under
+    <package>/record/<name>, the datasets under <package>/data."""
+    record_root = os.path.dirname(os.path.abspath(os.path.normpath(record_path)))
+    return os.path.join(os.path.dirname(record_root), "data")
+
+
 class GrondDataset(BackdoorDataset):
     """
     Dataset class for Grond attacks.
@@ -567,7 +582,8 @@ class GrondDataset(BackdoorDataset):
             - poison_indices.pth: Indices of poisoned training samples
             - Other Grond-specific files (trigger parameters, etc.)
         train (bool): If True, loads training set; otherwise loads test set
-        data_dir (str): Root directory containing datasets. Default: 'large_files/data'
+        data_dir (str, optional): Root directory containing the datasets. Default: the
+            data/ directory next to the record/ directory that holds record_path
         
     Note:
         Requires Grond implementation to be available in ./grond/
@@ -587,15 +603,17 @@ class GrondDataset(BackdoorDataset):
         ... )
     """
     
-    def __init__(self, dataset, transform, target_class, record_path, train=True, 
-                 data_dir="large_files/data"):
+    def __init__(self, dataset, transform, target_class, record_path, train=True,
+                 data_dir=None):
         # Import Grond's poison loader (must be in sys.path)
         grond_dir = os.path.abspath("./grond")
         if grond_dir not in sys.path:
             sys.path.append(grond_dir)
         from grond.poison_loader import POI, POI_TEST
 
-        # Construct path to dataset
+        # Construct path to dataset (default: the data/ directory of the package the record is in)
+        if data_dir is None:
+            data_dir = data_dir_of_record(record_path)
         dataset_path = os.path.join(data_dir, dataset)
 
         # Reconstruct poisoned dataset used in attack
@@ -1943,14 +1961,14 @@ def load_clean_record(dataset, arch, record_dir="record", data_dir="data",
     # Load clean model
     exp_id = experiment_variable_identifier(arch, dataset, None)
     clean_path = os.path.join(record_dir, f"prototype_{exp_id}", "clean_model.pth")
-    state_dict = torch.load(clean_path)
+    state_dict = torch.load(clean_path, map_location="cpu")
     record["model"] = load_model_state(arch, dataset, state_dict)
 
     return record
 
 
-def load_backdoor_record(dataset, arch, atk, poison_rate, clean_record, 
-                        record_dir="record"):
+def load_backdoor_record(dataset, arch, atk, poison_rate, clean_record,
+                        record_dir="record", data_dir=None):
     """
     Loads backdoored dataset and model for a specific attack.
     
@@ -1963,6 +1981,8 @@ def load_backdoor_record(dataset, arch, atk, poison_rate, clean_record,
         poison_rate (float): Poisoning rate (e.g., 0.05 for 5%)
         clean_record (dict): Clean record from load_clean_record()
         record_dir (str, optional): Directory containing attack records. Default: 'record'
+        data_dir (str, optional): Directory with the datasets, used by the Grond loader.
+            Default: the data/ directory next to record_dir
         
     Returns:
         dict: Dictionary containing backdoored datasets and model.
@@ -2001,7 +2021,7 @@ def load_backdoor_record(dataset, arch, atk, poison_rate, clean_record,
     elif atk == "dfst":
         return load_dfst(atk_path, dataset, arch, clean_record)
     elif atk == "grond":
-        return load_grond(atk_path, dataset, arch)
+        return load_grond(atk_path, dataset, arch, data_dir=data_dir)
     elif atk == "dfba":
         return load_dfba(atk_path, dataset, arch, clean_record)
     else:
@@ -2070,7 +2090,7 @@ def load_adap(atk_path, dataset, arch, clean_record, target_class=0):
                                  clean_dataset=clean_record[key])
     
     # Load model
-    state_dict = torch.load(os.path.join(atk_path, "model.pt"))
+    state_dict = torch.load(os.path.join(atk_path, "model.pt"), map_location="cpu")  # GPU-saved
     record["model"] = load_model_state(arch, dataset, state_dict)
 
     return record
@@ -2099,7 +2119,8 @@ def load_dfst(atk_path, dataset, arch, clean_record):
                                  clean_dataset=clean_record[key])
 
     # Load model
-    state_dict = torch.load(os.path.join(atk_path, "model.pt"), weights_only=False)
+    state_dict = torch.load(os.path.join(atk_path, "model.pt"), weights_only=False,
+                            map_location="cpu")  # GPU-saved
     record["model"] = load_model_state(arch, dataset, state_dict)
 
     return record
@@ -2131,13 +2152,13 @@ def load_dfba(atk_path, dataset, arch, clean_record):
                                  delta=delta, mask=mask)
     
     # Load model
-    state_dict = torch.load(os.path.join(atk_path, "model.pth"))
+    state_dict = torch.load(os.path.join(atk_path, "model.pth"), map_location="cpu")
     record["model"] = load_model_state(arch, dataset, state_dict)
 
     return record
 
 
-def load_grond(atk_path, dataset, arch, transform_dict=None, target_class=0):
+def load_grond(atk_path, dataset, arch, transform_dict=None, target_class=0, data_dir=None):
     """
     Loads Grond attack results.
 
@@ -2148,6 +2169,8 @@ def load_grond(atk_path, dataset, arch, transform_dict=None, target_class=0):
         transform_dict (dict, optional): Transform dictionary
         target_class (int): Target class of the attack; the record's trigger
             file is named upgd_<target_class>.pth
+        data_dir (str, optional): Directory with the datasets. Default: the data/ directory of
+            the package the record is in (large_files/data)
 
     Returns:
         dict: Record with 'test', 'train_transformed', 'test_transformed', 'model'
@@ -2161,10 +2184,10 @@ def load_grond(atk_path, dataset, arch, transform_dict=None, target_class=0):
         transforms = transform_dict.get(transform_key) if transform_dict else None
 
         record[key] = GrondDataset(dataset, transforms, target_class=target_class,
-                                   record_path=atk_path, train=is_train)
+                                   record_path=atk_path, train=is_train, data_dir=data_dir)
 
     # Load model
-    checkpoint = torch.load(os.path.join(atk_path, "checkpoint.pth"))
+    checkpoint = torch.load(os.path.join(atk_path, "checkpoint.pth"), map_location="cpu")  # GPU-saved
     state_dict = checkpoint["model"]
     record["model"] = load_model_state(arch, dataset, state_dict)
 

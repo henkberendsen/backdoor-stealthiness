@@ -39,11 +39,13 @@ that are both trigger-responsive and downstream-influential (lower = stealthier)
 - [Extending the benchmark](#extending-the-benchmark)
 - [Scope of the data package](#scope-of-the-data-package)
 - [Notes on reproducibility](#notes-on-reproducibility)
+- [Ethical considerations](#ethical-considerations)
 - [Citation and license](#citation-and-license)
 
 ## Requirements
 
-- Linux, Python 3.11 (the reference environment is 3.11.3), `git`.
+- Linux, Python 3.11 or 3.12 (the reference environment is 3.11.3; the pinned PyTorch has no
+  wheels for Python 3.13), `git`.
 - The pinned packages in [requirements.txt](requirements.txt): PyTorch 2.5.1, torchvision 0.20.1,
   scikit-learn 1.5.2, scipy 1.14.1, numpy 1.26.4 and the metric libraries (`lpips`, `ImageHash`,
   `torchmetrics`, `POT`, `scikit-image`). Keep scikit-learn at the pinned version when reproducing
@@ -98,21 +100,24 @@ reproduction steps below need.
 
 | Component | Contents | Size |
 |---|---|---|
-| `record/` | 75 trained records: 63 ResNet18 and 12 VGG16 models with their poisoned train/test data (CIFAR-10, CIFAR-100, Imagenette) | 6.0 GB |
+| `record/` | 75 trained records: 63 ResNet18 and 12 VGG16 models with their poisoned train/test data (CIFAR-10, CIFAR-100, Imagenette) | 6.7 GB |
 | `feature_space_train/` | penultimate-layer features of the target-class and poisoned training samples, per configuration | 0.3 GB |
 | `feature_space_test/` | clean and triggered test features plus predictions, per configuration | 2.0 GB |
 | `tac_activations/` | activation differences between clean and triggered test images for TAC and TUP | 1.9 GB |
 | `predictions_test_all_labels/` | test-set predictions used for benign accuracy | 8 MB |
 | `tsne/` | the fixed-seed t-SNE embeddings and plots behind SS and CDBI | 9 MB |
-| `data/` | the datasets in the layout the loaders expect: CIFAR-10/100 as torchvision folders and the raw 160px Imagenette, which the loaders centre-crop and resize to 80x80 on the fly (`preprocess_imagenette.py` applies the same transformation in place for training) | 0.9 GB |
+| `data/` | the datasets in the layout the loaders expect: CIFAR-10/100 as torchvision folders and the raw 160px Imagenette, which the loaders centre-crop, resize to 80x80 and re-encode as JPEG in memory, reproducing pixel for pixel the files that `preprocess_imagenette.py` wrote in place for training | 0.9 GB |
 | `replicates/` | retrained models for the robustness analyses: five training seeds, two extra target classes, independent Grond/Adap-Patch re-runs, VGG16 checkpoints | 6 GB |
 
 Records are named `<attack>_<arch>_<dataset>_p<rate>` with the decimal point of the poisoning
 rate replaced by a dash (`badnet_resnet18_cifar10_p0-05`); DFBA has no poisoning rate and uses
 `pNone`, and the benign models are `prototype_<arch>_<dataset>_pNone`.
 `experiment_variable_identifier()` in `eval_utils.py` is the single source of truth for this
-string. Every loader and script also accepts `--large_files` (or the environment variable
-`BACKDOOR_STEALTHINESS_DATA`) to read the package from another location.
+string. `scripts/evaluate_record.py` and `scripts/feature_parameter_metrics.py` accept
+`--large_files`, and every script, the defenses and the per-configuration analyses included,
+reads the environment variable `BACKDOOR_STEALTHINESS_DATA`, to use a package stored elsewhere.
+Records fetched with `scripts/download_data.py` directly rather than through `setup.sh --data`
+need `python fix_all_backdoorbench_paths.py` afterwards (see [Setup](#setup)).
 
 ## Repository layout
 
@@ -126,7 +131,7 @@ string. Every loader and script also accepts `--large_files` (or the environment
 | [analysis/](analysis/) | The derived analyses of the paper over the shared `metrics_matrix.csv`; see [analysis/README.md](analysis/README.md). |
 | [residual_correlations/](residual_correlations/) | Residual association between footprints and defense outcomes (Figure 3). |
 | [reproduce_analyses.sh](reproduce_analyses.sh) | Runs every derived analysis in one go. |
-| [eval_metrics.py](eval_metrics.py), [eval.ipynb](eval.ipynb) | The original evaluation driver and its notebook front end, kept for reference; the settings block at the top of the driver selects the configuration. |
+| [eval_metrics.py](eval_metrics.py), [eval.ipynb](eval.ipynb) | The original evaluation driver and its notebook front end, kept for reference; the settings block at the top of the driver selects the configuration. The driver reads Imagenette from files already resized in place by `preprocess_imagenette.py`; the library loaders do that in memory. |
 | [job_executer.sh](job_executer.sh) | SLURM job template used on our cluster (one job per configuration). The per-experiment job generators are cluster-specific and not part of the artifact. |
 | `adap/ backdoorbench/ dfba/ dfst/ grond/` | The attack implementations (git submodules of our forks); each has its own `train.sh`. |
 | [fix_all_backdoorbench_paths.py](fix_all_backdoorbench_paths.py), [preprocess_imagenette.py](preprocess_imagenette.py), [tinyimagenet.py](tinyimagenet.py) | Data utilities: record path repair, Imagenette downscaling to 80x80, a Tiny-ImageNet dataset class with a CIFAR-like interface. |
@@ -155,7 +160,7 @@ bash reproduce_analyses.sh
 | Agreement without the derived metrics (PSNR, CDBI, TUP) | `analysis/analysis10/analysis10_agreement_excluding_derived.py` | `analysis/analysis10/agreement_excluding_derived.csv` |
 | CDBI sensitivity to the embedding (raw, PCA, t-SNE seeds and perplexities) | `analysis/analysis8/aggregate_ranking_agreement.py` | `analysis/analysis8/cdbi_sensitivity_summary.csv` |
 | Stability across training seeds and target classes | `analysis/analysis9/aggregate_seed_stability.py` | `analysis/analysis9/seed_stability_summary.csv` |
-| Figure 3: residual footprint-defense associations | `residual_correlations/residual_corr.py` | `residuals_heatmap_all.png` |
+| Figure 3: residual footprint-defense associations | `residual_correlations/residual_corr.py` | `residuals_heatmap_all.png` (the subset heatmap `residuals_heatmap.png` written next to it is not tracked) |
 
 The scripts rewrite their outputs in place, so `git status` afterwards shows whether anything
 differs from the committed reference (in a source tree unpacked from the archive, `diff -rq`
@@ -174,8 +179,9 @@ python scripts/feature_parameter_metrics.py --model resnet18 --dataset imagenett
 ```
 
 Each run writes `results/tables/feature_parameter_resnet18/<dataset>.csv` (one row per
-configuration) and stores the t-SNE embeddings under `large_files/tsne/`, replacing the
-published ones (`--tsne_dir` writes them elsewhere). Expected outcome: UCLC, TAC, TUP and DSWD
+configuration) and stores the t-SNE embeddings and scatter plots under `results/tsne/`
+(`--tsne_dir` changes this); the published embeddings under `large_files/tsne/` are left
+untouched. Expected outcome: UCLC, TAC, TUP and DSWD
 reproduce the published values; SS and CDBI reproduce the attack rankings, with values that can
 differ from the printed ones, most visibly where the poisoned samples are few or form no compact
 cluster, because the printed tables were computed before the t-SNE seed was fixed in the code
@@ -199,9 +205,9 @@ python scripts/evaluate_record.py --attack grond --model resnet18 --dataset imag
 Useful options: `--spaces performance input feature parameter` selects the spaces;
 `--sample_size N` limits the number of clean/triggered image pairs for the input-space metrics
 (LPIPS and IS run neural networks and are slow on a CPU); `--recompute --intermediates DIR`
-re-extracts every intermediate into `DIR` instead of reading the published ones. With the
-published intermediates (including the published t-SNE embeddings, which step 2 replaces unless
-it is given `--tsne_dir`) the row for BadNets on CIFAR-10 at 5% is BA 94.5, ASR 100, l1 13.2,
+re-extracts every intermediate into `DIR` instead of reading the published ones. Without a GPU
+every record still loads; the input-space metrics are the slow part. With the published
+intermediates the row for BadNets on CIFAR-10 at 5% is BA 94.5, ASR 100, l1 13.2,
 PSNR 25.8, SSIM 0.956, SS 0.506, DSWD 2.01, CDBI 0.575, UCLC 6.59, TAC 3.90, TUP 16.2 (Tables 2,
 4, 5, 6 and 10 of the paper).
 
@@ -265,10 +271,15 @@ the paper's appendix.
 - **Target class.** All attacks target class 0. Records trained with other target classes are
   evaluated with `--target_class`.
 - **Imagenette preprocessing.** All Imagenette models were trained on 80x80 images obtained by
-  centre-cropping the 160px release to a square and resizing. The loaders apply exactly this
-  transformation to the raw images, so evaluation sees the training distribution.
+  centre-cropping the 160px release to a square, resizing and saving as JPEG with
+  `preprocess_imagenette.py`. The loaders apply exactly this transformation, JPEG re-encoding
+  included, to the raw images in memory, so evaluation sees the training pixels; without the
+  re-encoding, Imagenette footprints and ASR values drift from the published ones.
 - **Paths.** Nothing is hardcoded to a machine: paths derive from the repository location or from
-  `BACKDOOR_STEALTHINESS_DATA` / `BACKDOOR_STEALTHINESS_REPLICATES`.
+  `BACKDOOR_STEALTHINESS_DATA` / `BACKDOOR_STEALTHINESS_REPLICATES`. The BackdoorBench loader
+  locates the clean dataset by cutting a record's path at its first `record` and appending
+  `data/<dataset>`, so keep the data package under a path that does not contain `record` before
+  `large_files/record/`.
 
 ## Ethical considerations
 

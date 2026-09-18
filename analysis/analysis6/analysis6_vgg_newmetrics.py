@@ -14,7 +14,10 @@ correlation; we report values/orderings.
 Runs on a CPU: we patch torch.load to map_location='cpu' (records were saved on GPU) and seed
 t-SNE (np.random.seed) for reproducibility.
 """
-import sys, os, numpy as np, torch
+import sys, os
+if any(a in ("-h", "--help") for a in sys.argv[1:]):
+    print(__doc__.strip()); sys.exit(0)
+import numpy as np, torch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -28,6 +31,8 @@ import pandas as pd
 
 # the data package: large_files/ next to the repository, or $BACKDOOR_STEALTHINESS_DATA
 LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO / "large_files"))
+if not (LARGE_FILES / "record").is_dir():
+    sys.exit(f"data package not found at {LARGE_FILES}: set BACKDOOR_STEALTHINESS_DATA (README.md, Data)")
 RECORD = str(LARGE_FILES / "record")
 DATA = str(LARGE_FILES / "data")
 FTRAIN = LARGE_FILES / "feature_space_train"

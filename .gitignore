@@ -44,3 +44,6 @@ Overleaf_files/*
 
 # The attack implementations are git submodules of upstream forks; .gitmodules carries
 # ignore = all for them, so their pointers only change through an explicit git add <submodule>.
+
+# the subset heatmap residual_correlations/residual_corr.py writes next to the tracked full one
+/residuals_heatmap.png

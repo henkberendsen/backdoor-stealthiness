@@ -34,7 +34,7 @@ REPO = Path(__file__).resolve().parents[2]
 # The VGG16 checkpoints (models only) are read from large_files/replicates/vgg_records/
 # by default, or from <BACKDOOR_STEALTHINESS_REPLICATES>/vgg_records.
 RECORDS = Path(os.environ.get("BACKDOOR_STEALTHINESS_REPLICATES",
-                              REPO_ROOT / "large_files" / "replicates")) / "vgg_records"
+                              REPO / "large_files" / "replicates")) / "vgg_records"
 OUT = Path(__file__).resolve().parent / "vgg_uclc.csv"
 
 # values printed in the submitted paper's Table 9; the gate below must reproduce them

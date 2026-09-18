@@ -1,23 +1,33 @@
 diff --git a/poison_loader.py b/poison_loader.py
-index facb763..43a3023 100644
+index facb763..72b7d1c 100644
 --- a/poison_loader.py
 +++ b/poison_loader.py
-@@ -12,6 +12,14 @@ import os
+@@ -8,10 +8,24 @@ import numpy as np
+ from PIL import Image
+ from copy import deepcopy
+ import torch
++import io
+ import os
  import random
  
  
 +def square_resize(img, size):
-+    """Centre-crop a PIL image to a square on its shorter side, then resize to size x size
-+    (bilinear) - the preprocessing the 80x80 Imagenette training images were produced with."""
++    """Centre-crop a PIL image to a square on its shorter side, resize to size x size (bilinear)
++    and re-encode as JPEG with PIL's defaults - the preprocessing the 80x80 Imagenette training
++    images were produced with (preprocess_imagenette.py saved them as JPEG)."""
 +    side = min(img.size)
 +    left, top = int(round((img.size[0] - side) / 2.0)), int(round((img.size[1] - side) / 2.0))
-+    return img.crop((left, top, left + side, top + side)).resize((size, size), Image.BILINEAR)
++    img = img.crop((left, top, left + side, top + side)).resize((size, size), Image.BILINEAR)
++    buf = io.BytesIO()
++    img.save(buf, format="JPEG")
++    buf.seek(0)
++    return Image.open(buf).convert("RGB")
 +
 +
  class folder_load(Dataset):
      '''
      poison_rate: the proportion of poisoned images in training set, controlled by seed.
-@@ -19,7 +27,7 @@ class folder_load(Dataset):
+@@ -19,7 +33,7 @@ class folder_load(Dataset):
      '''
      def __init__(self, path,  T, poison_rate=1, seed=0, non_poison_indices=None):
          self.T =  T
@@ -26,7 +36,7 @@ index facb763..43a3023 100644
          self.trainls = [str(i) for i in range(50000)]
          self.path = path
          self.PILimgs = []
-@@ -31,7 +39,7 @@ class folder_load(Dataset):
+@@ -31,7 +45,7 @@ class folder_load(Dataset):
              self.PILimgs.append(im_temp)
              img.close()
  
@@ -35,7 +45,7 @@ index facb763..43a3023 100644
          self.PILc10 = [item[0] for item in self.c10]
          if non_poison_indices is not None:
              self.non_poison_indices = non_poison_indices
-@@ -58,7 +66,7 @@ class CIFAR10dirty(Dataset):
+@@ -58,7 +72,7 @@ class CIFAR10dirty(Dataset):
  
      def __init__(self, root, poison_rate, seed=0, transform=None, non_poison_indices=None):
          self.transform = transform
@@ -44,7 +54,7 @@ index facb763..43a3023 100644
          self.targets = self.c10.targets
  
          if non_poison_indices is not None:
-@@ -92,9 +100,9 @@ class POI(Dataset):
+@@ -92,9 +106,9 @@ class POI(Dataset):
          self.transform = transform
  
          if dataset == "cifar10":
@@ -56,15 +66,14 @@ index facb763..43a3023 100644
          elif dataset == "imagenette":
              self.cleanset = datasets.ImageFolder(os.path.join(root, "train"))
          elif dataset == "tiny":
-@@ -120,17 +128,27 @@ class POI(Dataset):
-         self.upgd_data = torch.load(os.path.join(upgd_path, 'upgd_'+str(target_cls)+'.pth'), map_location='cpu')
+@@ -121,16 +135,26 @@ class POI(Dataset):
          self.totensor = transforms.Compose([transforms.ToTensor()])
          self.toimg = transforms.Compose([transforms.ToPILImage()])
-+        
+ 
 +        # Store the expected image size from upgd_data for resizing (needed for imagenette)
 +        self.upgd_size = self.upgd_data.shape[-1]  # Assumes square images (H=W)
 +        self.dataset = dataset
- 
++
  
      def __getitem__(self, index):
          if index in self.poison_indices:
@@ -84,7 +93,7 @@ index facb763..43a3023 100644
  
          if self.transform is not None:
              img = self.transform(img)
-@@ -144,11 +162,12 @@ class POI_TEST(Dataset):
+@@ -144,11 +168,12 @@ class POI_TEST(Dataset):
  
      def __init__(self, dataset, root, seed=0, transform=None, exclude_target=True, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/upgd-cifar10-ResNet18-Linf-eps8.0/'):
          self.transform = transform
@@ -99,17 +108,17 @@ index facb763..43a3023 100644
          elif dataset == "imagenette":
              self.cleanset = datasets.ImageFolder(os.path.join(root, "val"))
          elif dataset == "tiny":
-@@ -163,6 +182,9 @@ class POI_TEST(Dataset):
-         self.upgd_data = torch.load(os.path.join(upgd_path, 'upgd_'+str(target_cls)+'.pth'), map_location='cpu')
+@@ -164,6 +189,9 @@ class POI_TEST(Dataset):
          self.totensor = transforms.Compose([transforms.ToTensor()])
          self.toimg = transforms.Compose([transforms.ToPILImage()])
-+        
+ 
 +        # Store the expected image size from upgd_data for resizing (needed for imagenette)
 +        self.upgd_size = self.upgd_data.shape[-1]  # Assumes square images (H=W)
- 
++
          if exclude_target:
              # Imagenette and Tiny ImageNet have different attribute names than CIFAR10(0)
-@@ -179,6 +201,9 @@ class POI_TEST(Dataset):
+             if dataset in ["tiny", "imagenette"]:
+@@ -179,6 +207,9 @@ class POI_TEST(Dataset):
  
      def __getitem__(self, index):
          img = self.cleanset[index][0]
@@ -119,7 +128,7 @@ index facb763..43a3023 100644
          img_tensor = torch.clamp(self.totensor(img)+self.upgd_data, 0, 1)
          img = self.toimg(img_tensor)
          target = self.targets[index]
-@@ -348,7 +373,7 @@ class CIFAR10_Noise(Dataset):
+@@ -348,7 +379,7 @@ class CIFAR10_Noise(Dataset):
  
      def __init__(self, root, poison_rate, seed=0, transform=None, poison_indices=None, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/cifar10_random_noise/random.pth'):
          self.transform = transform
@@ -128,7 +137,7 @@ index facb763..43a3023 100644
          self.targets = self.c10.targets
          self.target_cls = target_cls
  
-@@ -391,7 +416,7 @@ class CIFAR10_Noise_TEST(Dataset):
+@@ -391,7 +422,7 @@ class CIFAR10_Noise_TEST(Dataset):
  
      def __init__(self, root, seed=0, transform=None, exclude_target=True, target_cls=0, upgd_path='/home/xxu/weight_backdoor/results/cifar10_random_noise/random.pth'):
          self.transform = transform

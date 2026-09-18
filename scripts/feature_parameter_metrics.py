@@ -9,7 +9,8 @@ the script
   1. loads the attack record (needed for the poisoned/cross indicators and the original
      labels of the saved feature subset),
   2. embeds the features with the seeded t-SNE via eval_utils.save_tsne, which stores
-     large_files/tsne/<arch>_<dataset>/<attack>_p<rate>/embedding.pt and the scatter plots,
+     results/tsne/<arch>_<dataset>/<attack>_p<rate>/embedding.pt and the scatter plots (the
+     published embeddings under large_files/tsne/ are left untouched),
   3. computes SS and CDBI on that embedding, DSWD from the saved test features, and
      UCLC / TAC / TUP from the model weights and the saved activation differences.
 DFBA poisons no training data, so it gets DSWD, UCLC, TAC and TUP only.
@@ -22,9 +23,9 @@ GPU, but the t-SNE runs take a few minutes per configuration, so run it as a job
 
 Output: results/tables/feature_parameter_<arch>/<dataset>.csv (one row per configuration).
 Use --large_files to point at a different intermediates directory and --attacks to restrict
-the run to a subset of attacks. --tsne_seed overrides the random state of the embedding (and
---tsne_dir keeps the resulting embeddings apart from the default ones), which is how the
-sensitivity of SS and CDBI to the seed can be checked.
+the run to a subset of attacks. --tsne_seed overrides the random state of the embedding and
+--tsne_dir chooses where the embeddings are written, which is how the sensitivity of SS and
+CDBI to the seed can be checked.
 """
 import argparse
 import csv
@@ -99,7 +100,7 @@ def evaluate(model_arch, dataset, attack, poison_rate, clean_record, dirs, n_cla
 
     bd_record = load_backdoor_record(dataset=dataset, arch=model_arch, atk=attack,
                                      poison_rate=poison_rate, clean_record=clean_record,
-                                     record_dir=str(dirs["record"]))
+                                     record_dir=str(dirs["record"]), data_dir=str(dirs["data"]))
     model = bd_record["model"]
 
     # Feature space: seeded t-SNE of the saved training features -> SS and CDBI
@@ -145,7 +146,8 @@ def main():
     ap.add_argument("--tsne_seed", type=int, default=None,
                     help="random state of the t-SNE (default: eval_utils.TSNE_KWARGS)")
     ap.add_argument("--tsne_dir", default=None,
-                    help="directory for the embeddings (default: <large_files>/tsne)")
+                    help="directory for the embeddings and plots (default: results/tsne; the "
+                         "published embeddings under <large_files>/tsne are never overwritten)")
     args = ap.parse_args()
     if args.tsne_seed is not None:
         eval_utils.TSNE_KWARGS["random_state"] = args.tsne_seed
@@ -153,8 +155,7 @@ def main():
     large = Path(args.large_files)
     dirs = {name: large / name for name in ["record", "data", "feature_space_train",
                                              "feature_space_test", "tac_activations", "tsne"]}
-    if args.tsne_dir:
-        dirs["tsne"] = Path(args.tsne_dir)
+    dirs["tsne"] = Path(args.tsne_dir) if args.tsne_dir else REPO_ROOT / "results" / "tsne"
     exp_id = f"{args.model}_{args.dataset}"
     feature_dir = dirs["feature_space_train"] / exp_id
     if not feature_dir.is_dir():

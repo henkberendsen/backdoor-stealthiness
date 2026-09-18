@@ -110,12 +110,12 @@ def load_clean(dataset, model, dirs, transform, target_class, img_size):
             ds = filter_target_class(ds, target_class)
         record[key] = ds
     proto = dirs["record"] / f"prototype_{experiment_variable_identifier(model, dataset, None)}" / "clean_model.pth"
-    state = torch.load(proto, weights_only=False)
+    state = torch.load(proto, weights_only=False, map_location="cpu")
     record["model"] = load_model_state(model, dataset, state.get("model", state) if isinstance(state, dict) and "model" in state else state)
     return record
 
 
-def load_backdoor(attack, path, dataset, model, clean_record, transform, target_class):
+def load_backdoor(attack, path, dataset, model, clean_record, transform, target_class, data_dir):
     """The attack record with every split under `transform` (the loaders differ in how they take it)."""
     transform_dict = {f"{dataset}_{k}": transform
                       for k in ["train", "test", "train_transformed", "test_transformed"]}
@@ -130,7 +130,7 @@ def load_backdoor(attack, path, dataset, model, clean_record, transform, target_
         return load_dfba(str(path), dataset, model, clean_record)
     if attack == "grond":
         return load_grond(str(path), dataset, model, transform_dict=transform_dict,
-                          target_class=target_class)
+                          target_class=target_class, data_dir=data_dir)
     raise ValueError(attack)
 
 
@@ -204,7 +204,7 @@ def main():
         bd = {"model": clean["model"]}
     else:
         bd = load_backdoor(args.attack, record_dir, args.dataset, args.model, clean,
-                           model_transform, args.target_class)
+                           model_transform, args.target_class, str(dirs["data"]))
     model_bd = bd["model"]
     row = {k: float("nan") for k in FIELDS}
     row.update({"timestamp": datetime.now().isoformat(timespec="seconds"), "model": args.model,
@@ -238,7 +238,7 @@ def main():
                                      args.target_class, img_size)
         clean_px = clean_px_record["test"]
         bd_px = load_backdoor(args.attack, record_dir, args.dataset, args.model, clean_px_record,
-                              pixel_transform, args.target_class)["test"]
+                              pixel_transform, args.target_class, str(dirs["data"]))["test"]
         if len(bd_px) != len(clean_px):
             raise SystemExit(f"clean ({len(clean_px)}) and triggered ({len(bd_px)}) test sets differ in size")
         clean_sub, n = subset(clean_px, args.sample_size)
