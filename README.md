@@ -267,7 +267,9 @@ the paper's appendix.
   saved next to the metrics, and the ranking of attacks is insensitive to the seed (analysis 8).
 - **Determinism.** All analyses seed their random generators. Inference on a different GPU or
   on a CPU can change the last reported digit of the activation-based metrics (DSWD, TAC, TUP)
-  through floating-point summation order; rankings are unaffected.
+  through floating-point summation order; rankings are unaffected. I-BAU's unlearning is not
+  bit-reproducible on a GPU: a rerun gives the same pre-defense accuracy and ASR but a different
+  post-defense ASR, so the committed I-BAU rows are single runs.
 - **Target class.** All attacks target class 0. Records trained with other target classes are
   evaluated with `--target_class`.
 - **Imagenette preprocessing.** All Imagenette models were trained on 80x80 images obtained by

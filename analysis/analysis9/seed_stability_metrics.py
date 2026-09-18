@@ -85,7 +85,10 @@ from eval_utils import (                              # noqa: E402
 # BACKDOOR_STEALTHINESS_REPLICATES variable.
 SCRATCH = Path(os.environ.get("BACKDOOR_STEALTHINESS_REPLICATES",
                               REPO_ROOT / "large_files" / "replicates"))
-PUBLISHED_RECORDS = REPO_ROOT / "large_files" / "record"
+# The published records and the datasets come from the data package: large_files/ next to the
+# repository, or the directory named by BACKDOOR_STEALTHINESS_DATA.
+LARGE_FILES = Path(os.environ.get("BACKDOOR_STEALTHINESS_DATA", REPO_ROOT / "large_files"))
+PUBLISHED_RECORDS = LARGE_FILES / "record"
 INTERMEDIATE = SCRATCH / "step3_intermediate"
 OUT_DIR = Path(__file__).resolve().parent / "results"
 
@@ -188,7 +191,7 @@ def main():
     print(f"[{args.variant}/{args.attack}] loading records "
           f"(target class {target_class}) ...")
     clean_test = get_dataset(args.dataset, train=False, transforms=test_t,
-                             data_dir=str(REPO_ROOT / "data"))
+                             data_dir=str(LARGE_FILES / "data"))
     clean_test_no_target = filter_target_class(clean_test, target_class)
 
     proto_path = clean_root / f"prototype_{args.model}_{args.dataset}_pNone" / "clean_model.pth"
@@ -211,7 +214,7 @@ def main():
         clean_dsets = {}
         for key in ["train", "test", "train_transformed", "test_transformed"]:
             ds = get_dataset(args.dataset, train="train" in key, transforms=test_t,
-                             data_dir=str(REPO_ROOT / "data"))
+                             data_dir=str(LARGE_FILES / "data"))
             if key.startswith("test"):
                 ds = filter_target_class(ds, target_class)
             clean_dsets[key] = ds

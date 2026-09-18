@@ -7,6 +7,10 @@ produces lives in its own subdirectory; nothing is written outside `analysis/`.
 
 - `metrics_matrix.csv` — one row per `(Dataset, Attack, PR_level)` for ResNet18 (76
   configurations): the 16 footprint metrics plus ASR and BA, as published in the paper's tables.
+  `PR` is the nominal rate of the level (0.05 or 0.003); the rows whose models were trained with
+  one of the paper's exception rates (2% for the low-rate WaNet and Bpp on CIFAR-10, 0.7% and 0.4%
+  for the high-rate Narcissus and Grond on CIFAR-100 and Tiny-ImageNet) carry the values of those
+  models, as in Table 2 of the paper.
   Consumed by every analysis below. `build_metrics_matrix.py` regenerates it from the LaTeX
   source of the result tables (`../residual_correlations/metric_tables.tex`) and cross-checks it
   against `../dataframing_results_df.csv`.
